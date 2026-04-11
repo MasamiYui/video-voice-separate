@@ -106,6 +106,7 @@ def extract_audio(
     output_path: Path,
     audio_stream_index: int = 0,
     sample_rate: int = 44_100,
+    channels: int = 2,
 ) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     run_ffmpeg(
@@ -117,7 +118,7 @@ def extract_audio(
             f"0:a:{audio_stream_index}",
             "-vn",
             "-ac",
-            "2",
+            str(channels),
             "-ar",
             str(sample_rate),
             "-c:a",

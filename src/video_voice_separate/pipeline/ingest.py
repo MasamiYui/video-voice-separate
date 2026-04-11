@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..config import DEFAULT_SAMPLE_RATE
+from ..config import DEFAULT_SAMPLE_RATE, TRANSCRIPTION_SAMPLE_RATE
 from ..exceptions import VideoVoiceSeparateError
-from ..types import MediaInfo, SeparationRequest
+from ..types import MediaInfo, SeparationRequest, TranscriptionRequest
 from ..utils.ffmpeg import extract_audio, probe_media
 
 
@@ -33,3 +33,23 @@ def prepare_working_audio(
     )
     return media_info, working_audio
 
+
+def prepare_transcription_audio(
+    request: TranscriptionRequest,
+    work_dir: Path,
+) -> tuple[MediaInfo, Path]:
+    media_info = probe_input(Path(request.input_path))
+    if media_info.audio_stream_count == 0:
+        raise VideoVoiceSeparateError("Input file does not contain an audio stream")
+
+    temp_dir = work_dir / "temp"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    working_audio = temp_dir / "transcription_input.wav"
+    extract_audio(
+        input_path=Path(request.input_path),
+        output_path=working_audio,
+        audio_stream_index=request.audio_stream_index,
+        sample_rate=TRANSCRIPTION_SAMPLE_RATE,
+        channels=1,
+    )
+    return media_info, working_audio

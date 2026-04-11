@@ -99,3 +99,57 @@ class SeparationResult:
     artifacts: SeparationArtifacts
     manifest: dict[str, Any]
     work_dir: Path
+
+
+@dataclass(slots=True)
+class TranscriptionRequest:
+    input_path: Path | str
+    output_dir: Path | str = Path("output")
+    language: str = "zh"
+    asr_model: str = "small"
+    device: Device = "auto"
+    audio_stream_index: int = 0
+    keep_intermediate: bool = False
+    write_srt: bool = True
+
+    def normalized(self) -> "TranscriptionRequest":
+        return TranscriptionRequest(
+            input_path=Path(self.input_path).expanduser().resolve(),
+            output_dir=Path(self.output_dir).expanduser().resolve(),
+            language=self.language,
+            asr_model=self.asr_model,
+            device=self.device,
+            audio_stream_index=self.audio_stream_index,
+            keep_intermediate=self.keep_intermediate,
+            write_srt=self.write_srt,
+        )
+
+
+@dataclass(slots=True)
+class TranscriptionSegment:
+    segment_id: str
+    start: float
+    end: float
+    text: str
+    speaker_label: str
+    language: str
+    duration: float
+
+
+@dataclass(slots=True)
+class TranscriptionArtifacts:
+    bundle_dir: Path
+    segments_json_path: Path
+    manifest_path: Path
+    srt_path: Path | None = None
+    intermediate_paths: dict[str, Path] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class TranscriptionResult:
+    request: TranscriptionRequest
+    media_info: MediaInfo
+    artifacts: TranscriptionArtifacts
+    segments: list[TranscriptionSegment]
+    manifest: dict[str, Any]
+    work_dir: Path

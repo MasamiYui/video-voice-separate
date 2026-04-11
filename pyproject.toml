@@ -6,10 +6,13 @@ readme = "README.md"
 requires-python = ">=3.11,<3.13"
 dependencies = [
   "demucs>=4.0.1,<5",
+  "faster-whisper>=1.1.1,<2",
   "imageio-ffmpeg>=0.6.0,<1",
   "librosa>=0.10.2,<1",
   "numpy>=1.26,<3",
+  "scikit-learn>=1.5,<2",
   "soundfile>=0.12.1,<1",
+  "speechbrain>=1.0.3,<2",
   "torchcodec>=0.8.0,<1",
 ]
 

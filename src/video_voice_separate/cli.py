@@ -4,11 +4,18 @@ import argparse
 import json
 from pathlib import Path
 
-from .config import DEFAULT_DEVICE, DEFAULT_MODE, DEFAULT_OUTPUT_FORMAT
+from .config import (
+    DEFAULT_DEVICE,
+    DEFAULT_MODE,
+    DEFAULT_OUTPUT_FORMAT,
+    DEFAULT_TRANSCRIPTION_ASR_MODEL,
+    DEFAULT_TRANSCRIPTION_LANGUAGE,
+)
 from .models.cdx23_dialogue import Cdx23DialogueSeparator
 from .pipeline.ingest import probe_input
 from .pipeline.runner import separate_file
-from .types import SeparationRequest
+from .transcription.runner import transcribe_file
+from .types import SeparationRequest, TranscriptionRequest
 from .utils.logging import configure_logging
 
 
@@ -45,6 +52,27 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--backend-music", default="demucs")
     run_parser.add_argument("--backend-dialogue", default="cdx23")
     run_parser.add_argument("--audio-stream-index", type=int, default=0)
+
+    transcribe_parser = subparsers.add_parser(
+        "transcribe",
+        help="Generate speaker-attributed transcript from a voice track or media file",
+    )
+    transcribe_parser.add_argument("--input", required=True, help="Input media file path")
+    transcribe_parser.add_argument("--output-dir", default="output-transcribe", help="Output directory")
+    transcribe_parser.add_argument(
+        "--language",
+        default=DEFAULT_TRANSCRIPTION_LANGUAGE,
+        help="Language hint for ASR, e.g. zh",
+    )
+    transcribe_parser.add_argument(
+        "--asr-model",
+        default=DEFAULT_TRANSCRIPTION_ASR_MODEL,
+        help="faster-whisper model name, e.g. small, medium, large-v3",
+    )
+    transcribe_parser.add_argument("--device", default=DEFAULT_DEVICE, choices=["auto", "cpu", "cuda", "mps"])
+    transcribe_parser.add_argument("--audio-stream-index", type=int, default=0)
+    transcribe_parser.add_argument("--keep-intermediate", action="store_true")
+    transcribe_parser.add_argument("--no-srt", action="store_true")
 
     probe_parser = subparsers.add_parser("probe", help="Inspect a media file")
     probe_parser.add_argument("--input", required=True, help="Input media file path")
@@ -124,6 +152,24 @@ def main(argv: list[str] | None = None) -> int:
         result = separate_file(request)
         print(f"voice={result.artifacts.voice_path}")
         print(f"background={result.artifacts.background_path}")
+        print(f"manifest={result.artifacts.manifest_path}")
+        return 0
+
+    if args.command == "transcribe":
+        request = TranscriptionRequest(
+            input_path=args.input,
+            output_dir=args.output_dir,
+            language=args.language,
+            asr_model=args.asr_model,
+            device=args.device,
+            audio_stream_index=args.audio_stream_index,
+            keep_intermediate=args.keep_intermediate,
+            write_srt=not args.no_srt,
+        )
+        result = transcribe_file(request)
+        print(f"segments={result.artifacts.segments_json_path}")
+        if result.artifacts.srt_path:
+            print(f"srt={result.artifacts.srt_path}")
         print(f"manifest={result.artifacts.manifest_path}")
         return 0
 
