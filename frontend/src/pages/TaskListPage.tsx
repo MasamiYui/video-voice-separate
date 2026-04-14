@@ -1,22 +1,15 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
-import { PlusCircle, Search, Trash2, RotateCcw } from 'lucide-react'
+import { PlusCircle, Search, Trash2 } from 'lucide-react'
 import { tasksApi } from '../api/tasks'
 import { StatusBadge } from '../components/shared/StatusBadge'
 import { ProgressBar } from '../components/shared/ProgressBar'
-import { formatDuration, formatRelativeTime, LANG_LABELS } from '../lib/utils'
 import type { Task } from '../types'
-
-const STATUS_OPTIONS = [
-  { value: 'all', label: '全部' },
-  { value: 'running', label: '运行中' },
-  { value: 'pending', label: '等待中' },
-  { value: 'succeeded', label: '已完成' },
-  { value: 'failed', label: '失败' },
-]
+import { useI18n } from '../i18n/useI18n'
 
 export function TaskListPage() {
+  const { t } = useI18n()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
@@ -44,6 +37,13 @@ export function TaskListPage() {
   const items = data?.items ?? []
   const total = data?.total ?? 0
   const pageCount = Math.ceil(total / 20)
+  const statusOptions = [
+    { value: 'all', label: t.tasks.filters.all },
+    { value: 'running', label: t.tasks.filters.running },
+    { value: 'pending', label: t.tasks.filters.pending },
+    { value: 'succeeded', label: t.tasks.filters.succeeded },
+    { value: 'failed', label: t.tasks.filters.failed },
+  ]
 
   function toggleSelect(id: string) {
     setSelected(prev => {
@@ -55,7 +55,7 @@ export function TaskListPage() {
   }
 
   async function handleBulkDelete() {
-    if (!confirm(`确定删除 ${selected.size} 个任务？`)) return
+    if (!confirm(t.tasks.deleteConfirmMany(selected.size))) return
     for (const id of selected) {
       await deleteMutation.mutateAsync(id)
     }
@@ -66,13 +66,13 @@ export function TaskListPage() {
     <div className="max-w-5xl space-y-5">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-900">任务列表</h1>
+        <h1 className="text-2xl font-bold text-slate-900">{t.tasks.title}</h1>
         <Link
           to="/tasks/new"
           className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors"
         >
           <PlusCircle size={15} />
-          新建任务
+          {t.common.createTask}
         </Link>
       </div>
 
@@ -83,12 +83,12 @@ export function TaskListPage() {
           <input
             value={search}
             onChange={e => { setSearch(e.target.value); setPage(1) }}
-            placeholder="搜索任务名称..."
+            placeholder={t.tasks.searchPlaceholder}
             className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400"
           />
         </div>
         <div className="flex gap-2">
-          {STATUS_OPTIONS.map(opt => (
+          {statusOptions.map(opt => (
             <button
               key={opt.value}
               onClick={() => { setStatusFilter(opt.value); setPage(1) }}
@@ -108,7 +108,7 @@ export function TaskListPage() {
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition-colors"
           >
             <Trash2 size={13} />
-            删除 {selected.size} 项
+            {t.tasks.deleteSelected(selected.size)}
           </button>
         )}
       </div>
@@ -116,9 +116,9 @@ export function TaskListPage() {
       {/* Table */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
         {isLoading ? (
-          <div className="py-16 text-center text-slate-400 text-sm">加载中...</div>
+          <div className="py-16 text-center text-slate-400 text-sm">{t.tasks.loading}</div>
         ) : items.length === 0 ? (
-          <div className="py-16 text-center text-slate-400 text-sm">没有找到匹配的任务</div>
+          <div className="py-16 text-center text-slate-400 text-sm">{t.tasks.noMatches}</div>
         ) : (
           <table className="w-full text-sm">
             <thead>
@@ -131,13 +131,13 @@ export function TaskListPage() {
                     className="rounded"
                   />
                 </th>
-                <th className="px-4 py-3 font-medium text-slate-500">名称</th>
-                <th className="px-4 py-3 font-medium text-slate-500">状态</th>
-                <th className="px-4 py-3 font-medium text-slate-500 w-32">进度</th>
-                <th className="px-4 py-3 font-medium text-slate-500">语言</th>
-                <th className="px-4 py-3 font-medium text-slate-500">耗时</th>
-                <th className="px-4 py-3 font-medium text-slate-500">创建时间</th>
-                <th className="px-4 py-3 font-medium text-slate-500 w-20">操作</th>
+                <th className="px-4 py-3 font-medium text-slate-500">{t.tasks.columns.name}</th>
+                <th className="px-4 py-3 font-medium text-slate-500">{t.tasks.columns.status}</th>
+                <th className="px-4 py-3 font-medium text-slate-500 w-32">{t.tasks.columns.progress}</th>
+                <th className="px-4 py-3 font-medium text-slate-500">{t.tasks.columns.language}</th>
+                <th className="px-4 py-3 font-medium text-slate-500">{t.tasks.columns.duration}</th>
+                <th className="px-4 py-3 font-medium text-slate-500">{t.tasks.columns.createdAt}</th>
+                <th className="px-4 py-3 font-medium text-slate-500 w-20">{t.tasks.columns.actions}</th>
               </tr>
             </thead>
             <tbody>
@@ -148,7 +148,7 @@ export function TaskListPage() {
                   selected={selected.has(task.id)}
                   onSelect={() => toggleSelect(task.id)}
                   onDelete={() => {
-                    if (confirm('确定删除此任务？')) deleteMutation.mutate(task.id)
+                    if (confirm(t.tasks.deleteConfirmOne)) deleteMutation.mutate(task.id)
                   }}
                   onClick={() => navigate(`/tasks/${task.id}`)}
                 />
@@ -161,7 +161,7 @@ export function TaskListPage() {
       {/* Pagination */}
       {pageCount > 1 && (
         <div className="flex items-center justify-between text-sm text-slate-500">
-          <span>共 {total} 条</span>
+          <span>{t.tasks.totalCount(total)}</span>
           <div className="flex gap-1">
             {Array.from({ length: pageCount }, (_, i) => i + 1).map(p => (
               <button
@@ -188,6 +188,8 @@ function TaskRow({ task, selected, onSelect, onDelete, onClick }: {
   onDelete: () => void
   onClick: () => void
 }) {
+  const { formatDuration, formatRelativeTime, getLanguageLabel, t } = useI18n()
+
   return (
     <tr
       className={`border-b border-slate-50 hover:bg-slate-50 cursor-pointer group ${
@@ -218,7 +220,7 @@ function TaskRow({ task, selected, onSelect, onDelete, onClick }: {
         </div>
       </td>
       <td className="px-4 py-3 text-slate-600" onClick={onClick}>
-        {task.source_lang} → {task.target_lang}
+        {getLanguageLabel(task.source_lang)} → {getLanguageLabel(task.target_lang)}
       </td>
       <td className="px-4 py-3 text-slate-600" onClick={onClick}>
         {formatDuration(task.elapsed_sec)}
@@ -230,7 +232,7 @@ function TaskRow({ task, selected, onSelect, onDelete, onClick }: {
         <button
           onClick={onDelete}
           className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-red-50 text-red-400 hover:text-red-600 transition-all"
-          title="删除"
+          title={t.tasks.deleteAction}
         >
           <Trash2 size={14} />
         </button>

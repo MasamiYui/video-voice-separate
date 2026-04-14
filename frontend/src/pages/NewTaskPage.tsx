@@ -1,15 +1,12 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronRight, ChevronLeft, Folder, Loader2 } from 'lucide-react'
+import { ChevronRight, ChevronLeft, Loader2 } from 'lucide-react'
 import { tasksApi } from '../api/tasks'
 import { configApi, systemApi } from '../api/config'
 import type { CreateTaskRequest, TaskConfig } from '../types'
-import { STAGE_LABELS, LANG_LABELS } from '../lib/utils'
-
-const STEPS = ['基础信息', '节点配置', '高级选项', '确认提交']
-
-const STAGE_OPTIONS = Object.keys(STAGE_LABELS).map(k => ({ value: k, label: STAGE_LABELS[k].split(': ')[0] }))
+import { LANGUAGE_CODES, STAGE_ORDER } from '../i18n/formatters'
+import { useI18n } from '../i18n/useI18n'
 
 const defaultConfig: Partial<TaskConfig> = {
   device: 'auto',
@@ -61,7 +58,11 @@ function Select({ value, onChange, options, className = '' }: {
       onChange={e => onChange(e.target.value)}
       className={`w-full px-3 py-2 text-sm border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 ${className}`}
     >
-      {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+      {options.map(option => (
+        <option key={option.value} value={option.value}>
+          {option.label}
+        </option>
+      ))}
     </select>
   )
 }
@@ -85,7 +86,7 @@ function TextInput({ value, onChange, placeholder = '', type = 'text' }: {
 
 function Checkbox({ checked, onChange, label }: {
   checked: boolean
-  onChange: (v: boolean) => void
+  onChange: (value: boolean) => void
   label: string
 }) {
   return (
@@ -112,7 +113,17 @@ function SectionCard({ title, children }: { title: string; children: React.React
   )
 }
 
+function ConfirmRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex">
+      <span className="text-slate-500 w-28 shrink-0">{label}:</span>
+      <span className="text-slate-900 font-medium">{value}</span>
+    </div>
+  )
+}
+
 export function NewTaskPage() {
+  const { locale, t, getLanguageLabel, getStageShortLabel } = useI18n()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [step, setStep] = useState(0)
@@ -125,13 +136,24 @@ export function NewTaskPage() {
   const [presetName, setPresetName] = useState('')
   const [mediaInfo, setMediaInfo] = useState<Record<string, unknown> | null>(null)
 
+  const steps = t.newTask.steps
+  const stageOptions = STAGE_ORDER.map(stage => ({
+    value: stage,
+    label: getStageShortLabel(stage),
+  }))
+  const languageOptions = LANGUAGE_CODES.map(code => ({
+    value: code,
+    label: `${getLanguageLabel(code)} (${code})`,
+  }))
+
   const { data: presets } = useQuery({
     queryKey: ['presets'],
     queryFn: configApi.getPresets,
   })
 
-  const patchConfig = (patch: Partial<TaskConfig>) =>
+  const patchConfig = (patch: Partial<TaskConfig>) => {
     setConfig(prev => ({ ...prev, ...patch }))
+  }
 
   const probeMutation = useMutation({
     mutationFn: (path: string) => systemApi.probe(path),
@@ -149,7 +171,9 @@ export function NewTaskPage() {
 
   function handleSubmit() {
     createMutation.mutate({
-      name: name || `任务-${new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`,
+      name: name || t.newTask.generatedTaskName(
+        new Date().toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' }),
+      ),
       input_path: inputPath,
       source_lang: sourceLang,
       target_lang: targetLang,
@@ -160,55 +184,71 @@ export function NewTaskPage() {
   }
 
   function applyPreset(presetId: string) {
-    const preset = presets?.find(p => String(p.id) === presetId)
-    if (preset) {
-      setConfig(prev => ({ ...prev, ...preset.config }))
-      setSourceLang(preset.source_lang)
-      setTargetLang(preset.target_lang)
-    }
-  }
+    const preset = presets?.find(item => String(item.id) === presetId)
+    if (!preset) return
 
-  const langOptions = Object.entries(LANG_LABELS).map(([v, l]) => ({ value: v, label: `${l} (${v})` }))
+    setConfig(prev => ({ ...prev, ...preset.config }))
+    setSourceLang(preset.source_lang)
+    setTargetLang(preset.target_lang)
+  }
 
   const step1 = (
     <div className="space-y-5">
-      <Field label="任务名称">
-        <TextInput value={name} onChange={setName} placeholder="例如：产品演示配音" />
+      <Field label={t.newTask.fields.taskName}>
+        <TextInput value={name} onChange={setName} placeholder={t.newTask.placeholders.taskName} />
       </Field>
-      <Field label="输入视频路径" hint="本地视频文件的绝对路径">
+      <Field label={t.newTask.fields.inputVideoPath} hint={t.newTask.hints.inputVideoPath}>
         <div className="flex gap-2">
-          <TextInput value={inputPath} onChange={v => { setInputPath(v); setMediaInfo(null) }} placeholder="/path/to/video.mp4" />
+          <TextInput
+            value={inputPath}
+            onChange={value => {
+              setInputPath(value)
+              setMediaInfo(null)
+            }}
+            placeholder={t.newTask.placeholders.inputVideoPath}
+          />
           <button
             onClick={() => inputPath && probeMutation.mutate(inputPath)}
             disabled={!inputPath || probeMutation.isPending}
             className="px-3 py-2 text-sm bg-slate-100 border border-slate-200 rounded-xl hover:bg-slate-200 disabled:opacity-50 shrink-0 transition-colors"
           >
-            {probeMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : '检测'}
+            {probeMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : t.newTask.actions.probe}
           </button>
         </div>
         {mediaInfo && (
           <div className="mt-2 p-3 bg-slate-50 rounded-lg text-xs text-slate-600 space-y-1">
-            <div>时长: {typeof mediaInfo.duration_sec === 'number' ? `${(mediaInfo.duration_sec / 60).toFixed(1)}分钟` : '—'}</div>
-            <div>格式: {String(mediaInfo.format_name ?? '—')}</div>
-            {mediaInfo.has_video && <div>包含视频流</div>}
-            {mediaInfo.sample_rate && <div>采样率: {String(mediaInfo.sample_rate)} Hz</div>}
+            <div>
+              {t.newTask.mediaInfo.duration(
+                typeof mediaInfo.duration_sec === 'number'
+                  ? (mediaInfo.duration_sec / 60).toFixed(1)
+                  : t.common.notAvailable,
+              )}
+            </div>
+            <div>{t.newTask.mediaInfo.format(String(mediaInfo.format_name ?? t.common.notAvailable))}</div>
+            {Boolean(mediaInfo.has_video) && <div>{t.newTask.mediaInfo.hasVideo}</div>}
+            {mediaInfo.sample_rate != null && (
+              <div>{t.newTask.mediaInfo.sampleRate(String(mediaInfo.sample_rate))}</div>
+            )}
           </div>
         )}
       </Field>
       <div className="grid grid-cols-2 gap-4">
-        <Field label="源语言">
-          <Select value={sourceLang} onChange={setSourceLang} options={langOptions} />
+        <Field label={t.newTask.fields.sourceLanguage}>
+          <Select value={sourceLang} onChange={setSourceLang} options={languageOptions} />
         </Field>
-        <Field label="目标语言">
-          <Select value={targetLang} onChange={setTargetLang} options={langOptions} />
+        <Field label={t.newTask.fields.targetLanguage}>
+          <Select value={targetLang} onChange={setTargetLang} options={languageOptions} />
         </Field>
       </div>
       {presets && presets.length > 0 && (
-        <Field label="应用预设">
+        <Field label={t.newTask.fields.applyPreset}>
           <Select
             value=""
             onChange={applyPreset}
-            options={[{ value: '', label: '— 选择预设 —' }, ...presets.map(p => ({ value: String(p.id), label: p.name }))]}
+            options={[
+              { value: '', label: t.newTask.placeholders.selectPreset },
+              ...presets.map(item => ({ value: String(item.id), label: item.name })),
+            ]}
           />
         </Field>
       )}
@@ -218,78 +258,134 @@ export function NewTaskPage() {
   const step2 = (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-4">
-        <Field label="从阶段">
+        <Field label={t.newTask.fields.fromStage}>
           <Select
             value={config.run_from_stage ?? 'stage1'}
-            onChange={v => patchConfig({ run_from_stage: v })}
-            options={STAGE_OPTIONS}
+            onChange={value => patchConfig({ run_from_stage: value })}
+            options={stageOptions}
           />
         </Field>
-        <Field label="到阶段">
+        <Field label={t.newTask.fields.toStage}>
           <Select
             value={config.run_to_stage ?? 'task-e'}
-            onChange={v => patchConfig({ run_to_stage: v })}
-            options={STAGE_OPTIONS}
+            onChange={value => patchConfig({ run_to_stage: value })}
+            options={stageOptions}
           />
         </Field>
       </div>
-      <SectionCard title="Stage 1: 音频分离">
+
+      <SectionCard title={t.newTask.sections.stage1}>
         <div className="grid grid-cols-2 gap-4">
-          <Field label="分离模式">
-            <Select value={config.separation_mode ?? 'auto'} onChange={v => patchConfig({ separation_mode: v })}
-              options={[{ value: 'auto', label: 'auto' }, { value: 'music', label: 'music' }, { value: 'dialogue', label: 'dialogue' }]} />
+          <Field label={t.newTask.fields.separationMode}>
+            <Select
+              value={config.separation_mode ?? 'auto'}
+              onChange={value => patchConfig({ separation_mode: value })}
+              options={[
+                { value: 'auto', label: t.newTask.options.separationMode.auto },
+                { value: 'music', label: t.newTask.options.separationMode.music },
+                { value: 'dialogue', label: t.newTask.options.separationMode.dialogue },
+              ]}
+            />
           </Field>
-          <Field label="质量">
-            <Select value={config.separation_quality ?? 'balanced'} onChange={v => patchConfig({ separation_quality: v })}
-              options={[{ value: 'balanced', label: 'balanced' }, { value: 'high', label: 'high' }]} />
+          <Field label={t.newTask.fields.quality}>
+            <Select
+              value={config.separation_quality ?? 'balanced'}
+              onChange={value => patchConfig({ separation_quality: value })}
+              options={[
+                { value: 'balanced', label: t.newTask.options.separationQuality.balanced },
+                { value: 'high', label: t.newTask.options.separationQuality.high },
+              ]}
+            />
           </Field>
         </div>
       </SectionCard>
-      <SectionCard title="Task A: 语音转写">
+
+      <SectionCard title={t.newTask.sections.taskA}>
         <div className="grid grid-cols-2 gap-4">
-          <Field label="ASR 模型">
-            <Select value={config.asr_model ?? 'small'} onChange={v => patchConfig({ asr_model: v })}
-              options={['tiny', 'base', 'small', 'medium', 'large-v3'].map(v => ({ value: v, label: v }))} />
+          <Field label={t.newTask.fields.asrModel}>
+            <Select
+              value={config.asr_model ?? 'small'}
+              onChange={value => patchConfig({ asr_model: value })}
+              options={['tiny', 'base', 'small', 'medium', 'large-v3'].map(value => ({ value, label: value }))}
+            />
           </Field>
         </div>
-        <Checkbox checked={config.generate_srt ?? true} onChange={v => patchConfig({ generate_srt: v })} label="生成 SRT 字幕" />
+        <Checkbox
+          checked={config.generate_srt ?? true}
+          onChange={value => patchConfig({ generate_srt: value })}
+          label={t.newTask.fields.generateSrt}
+        />
       </SectionCard>
-      <SectionCard title="Task C: 翻译">
-        <Field label="翻译后端">
-          <Select value={config.translation_backend ?? 'local-m2m100'} onChange={v => patchConfig({ translation_backend: v })}
-            options={[{ value: 'local-m2m100', label: 'local-m2m100' }, { value: 'siliconflow', label: 'SiliconFlow API' }]} />
+
+      <SectionCard title={t.newTask.sections.taskC}>
+        <Field label={t.newTask.fields.translationBackend}>
+          <Select
+            value={config.translation_backend ?? 'local-m2m100'}
+            onChange={value => patchConfig({ translation_backend: value })}
+            options={[
+              { value: 'local-m2m100', label: 'local-m2m100' },
+              { value: 'siliconflow', label: 'SiliconFlow API' },
+            ]}
+          />
         </Field>
         {config.translation_backend === 'siliconflow' && (
           <div className="grid grid-cols-2 gap-4">
-            <Field label="API Base URL">
-              <TextInput value={config.siliconflow_base_url ?? ''} onChange={v => patchConfig({ siliconflow_base_url: v })}
-                placeholder="https://api.siliconflow.cn/v1" />
+            <Field label={t.newTask.fields.apiBaseUrl}>
+              <TextInput
+                value={config.siliconflow_base_url ?? ''}
+                onChange={value => patchConfig({ siliconflow_base_url: value })}
+                placeholder="https://api.siliconflow.cn/v1"
+              />
             </Field>
-            <Field label="API Model">
-              <TextInput value={config.siliconflow_model ?? ''} onChange={v => patchConfig({ siliconflow_model: v })}
-                placeholder="deepseek-ai/DeepSeek-V3" />
+            <Field label={t.newTask.fields.apiModel}>
+              <TextInput
+                value={config.siliconflow_model ?? ''}
+                onChange={value => patchConfig({ siliconflow_model: value })}
+                placeholder="deepseek-ai/DeepSeek-V3"
+              />
             </Field>
           </div>
         )}
       </SectionCard>
-      <SectionCard title="Task D: 语音合成">
-        <Field label="TTS 后端">
-          <Select value={config.tts_backend ?? 'qwen3tts'} onChange={v => patchConfig({ tts_backend: v })}
-            options={[{ value: 'qwen3tts', label: 'Qwen3TTS' }]} />
+
+      <SectionCard title={t.newTask.sections.taskD}>
+        <Field label={t.newTask.fields.ttsBackend}>
+          <Select
+            value={config.tts_backend ?? 'qwen3tts'}
+            onChange={value => patchConfig({ tts_backend: value })}
+            options={[{ value: 'qwen3tts', label: 'Qwen3TTS' }]}
+          />
         </Field>
       </SectionCard>
-      <SectionCard title="Task E: 时间线装配">
+
+      <SectionCard title={t.newTask.sections.taskE}>
         <div className="grid grid-cols-2 gap-4">
-          <Field label="贴合策略">
-            <Select value={config.fit_policy ?? 'conservative'} onChange={v => patchConfig({ fit_policy: v })}
-              options={[{ value: 'conservative', label: 'conservative' }, { value: 'high_quality', label: 'high_quality' }]} />
+          <Field label={t.newTask.fields.fitPolicy}>
+            <Select
+              value={config.fit_policy ?? 'conservative'}
+              onChange={value => patchConfig({ fit_policy: value })}
+              options={[
+                { value: 'conservative', label: t.newTask.options.fitPolicy.conservative },
+                { value: 'high_quality', label: t.newTask.options.fitPolicy.high_quality },
+              ]}
+            />
           </Field>
-          <Field label="混音配置">
-            <Select value={config.mix_profile ?? 'preview'} onChange={v => patchConfig({ mix_profile: v })}
-              options={[{ value: 'preview', label: 'preview' }, { value: 'enhanced', label: 'enhanced' }]} />
+          <Field label={t.newTask.fields.mixProfile}>
+            <Select
+              value={config.mix_profile ?? 'preview'}
+              onChange={value => patchConfig({ mix_profile: value })}
+              options={[
+                { value: 'preview', label: t.newTask.options.mixProfile.preview },
+                { value: 'enhanced', label: t.newTask.options.mixProfile.enhanced },
+              ]}
+            />
           </Field>
-          <Field label="背景增益 (dB)">
-            <TextInput type="number" value={config.background_gain_db ?? -8} onChange={v => patchConfig({ background_gain_db: parseFloat(v) })} />
+          <Field label={t.newTask.fields.backgroundGain}>
+            <TextInput
+              type="number"
+              value={config.background_gain_db ?? -8}
+              onChange={value => patchConfig({ background_gain_db: parseFloat(value) })}
+            />
           </Field>
         </div>
       </SectionCard>
@@ -298,13 +394,29 @@ export function NewTaskPage() {
 
   const step3 = (
     <div className="space-y-5">
-      <Field label="计算设备">
-        <Select value={config.device ?? 'auto'} onChange={v => patchConfig({ device: v })}
-          options={[{ value: 'auto', label: 'auto (自动检测)' }, { value: 'cpu', label: 'CPU' }, { value: 'cuda', label: 'CUDA (GPU)' }, { value: 'mps', label: 'MPS (Apple Silicon)' }]} />
+      <Field label={t.newTask.fields.device}>
+        <Select
+          value={config.device ?? 'auto'}
+          onChange={value => patchConfig({ device: value })}
+          options={[
+            { value: 'auto', label: t.newTask.options.device.auto },
+            { value: 'cpu', label: t.newTask.options.device.cpu },
+            { value: 'cuda', label: t.newTask.options.device.cuda },
+            { value: 'mps', label: t.newTask.options.device.mps },
+          ]}
+        />
       </Field>
       <div className="space-y-3">
-        <Checkbox checked={config.use_cache ?? true} onChange={v => patchConfig({ use_cache: v })} label="复用缓存（跳过已成功完成的阶段）" />
-        <Checkbox checked={config.keep_intermediate ?? false} onChange={v => patchConfig({ keep_intermediate: v })} label="保留中间文件" />
+        <Checkbox
+          checked={config.use_cache ?? true}
+          onChange={value => patchConfig({ use_cache: value })}
+          label={t.newTask.hints.cacheReuse}
+        />
+        <Checkbox
+          checked={config.keep_intermediate ?? false}
+          onChange={value => patchConfig({ keep_intermediate: value })}
+          label={t.newTask.hints.keepIntermediate}
+        />
       </div>
     </div>
   )
@@ -312,26 +424,36 @@ export function NewTaskPage() {
   const step4 = (
     <div className="space-y-5">
       <div className="bg-slate-50 rounded-xl p-5 space-y-2 text-sm">
-        <ConfirmRow label="任务名称" value={name || '（自动生成）'} />
-        <ConfirmRow label="输入视频" value={inputPath || '—'} />
-        <ConfirmRow label="语言方向" value={`${sourceLang} → ${targetLang}`} />
-        <ConfirmRow label="执行范围" value={`${config.run_from_stage} → ${config.run_to_stage}`} />
-        <ConfirmRow label="翻译后端" value={config.translation_backend ?? '—'} />
-        <ConfirmRow label="TTS 后端" value={config.tts_backend ?? '—'} />
-        <ConfirmRow label="设备" value={config.device ?? 'auto'} />
-        <ConfirmRow label="缓存复用" value={config.use_cache ? '是' : '否'} />
+        <ConfirmRow label={t.newTask.summary.taskName} value={name || t.newTask.summary.autoGenerated} />
+        <ConfirmRow label={t.newTask.summary.inputVideo} value={inputPath || t.common.notAvailable} />
+        <ConfirmRow
+          label={t.newTask.summary.direction}
+          value={`${getLanguageLabel(sourceLang)} → ${getLanguageLabel(targetLang)}`}
+        />
+        <ConfirmRow
+          label={t.newTask.summary.stageRange}
+          value={`${getStageShortLabel((config.run_from_stage ?? 'stage1') as typeof STAGE_ORDER[number])} → ${getStageShortLabel((config.run_to_stage ?? 'task-e') as typeof STAGE_ORDER[number])}`}
+        />
+        <ConfirmRow label={t.newTask.summary.translationBackend} value={config.translation_backend ?? t.common.notAvailable} />
+        <ConfirmRow label={t.newTask.summary.ttsBackend} value={config.tts_backend ?? t.common.notAvailable} />
+        <ConfirmRow label={t.newTask.summary.device} value={config.device ?? 'auto'} />
+        <ConfirmRow label={t.newTask.summary.cacheReuse} value={config.use_cache ? t.common.yes : t.common.no} />
       </div>
       <div className="space-y-3">
-        <Checkbox checked={saveAsPreset} onChange={setSaveAsPreset} label="保存为预设" />
+        <Checkbox
+          checked={saveAsPreset}
+          onChange={setSaveAsPreset}
+          label={t.newTask.fields.saveAsPreset}
+        />
         {saveAsPreset && (
-          <Field label="预设名称">
-            <TextInput value={presetName} onChange={setPresetName} placeholder="例如：中英高清配音" />
+          <Field label={t.newTask.fields.presetName}>
+            <TextInput value={presetName} onChange={setPresetName} placeholder={t.newTask.placeholders.presetName} />
           </Field>
         )}
       </div>
       {createMutation.isError && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-sm text-red-700">
-          创建失败，请检查参数后重试
+          {t.newTask.createFailed}
         </div>
       )}
     </div>
@@ -341,54 +463,53 @@ export function NewTaskPage() {
 
   return (
     <div className="max-w-2xl">
-      <h1 className="text-2xl font-bold text-slate-900 mb-6">新建任务</h1>
+      <h1 className="text-2xl font-bold text-slate-900 mb-6">{t.newTask.title}</h1>
 
-      {/* Stepper */}
       <div className="flex items-center mb-8">
-        {STEPS.map((s, i) => (
-          <div key={i} className="flex items-center">
+        {steps.map((label, index) => (
+          <div key={label} className="flex items-center">
             <div className="flex items-center gap-2">
               <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${
-                i < step ? 'bg-emerald-500 text-white' :
-                i === step ? 'bg-blue-600 text-white' :
+                index < step ? 'bg-emerald-500 text-white' :
+                index === step ? 'bg-blue-600 text-white' :
                 'bg-slate-200 text-slate-500'
               }`}>
-                {i < step ? '✓' : i + 1}
+                {index < step ? '✓' : index + 1}
               </div>
-              <span className={`text-sm font-medium hidden sm:block ${i === step ? 'text-slate-900' : 'text-slate-400'}`}>
-                {s}
+              <span className={`text-sm font-medium hidden sm:block ${index === step ? 'text-slate-900' : 'text-slate-400'}`}>
+                {label}
               </span>
             </div>
-            {i < STEPS.length - 1 && (
-              <div className={`h-px w-8 mx-2 ${i < step ? 'bg-emerald-300' : 'bg-slate-200'}`} />
+            {index < steps.length - 1 && (
+              <div className={`h-px w-8 mx-2 ${index < step ? 'bg-emerald-300' : 'bg-slate-200'}`} />
             )}
           </div>
         ))}
       </div>
 
-      {/* Step content */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-        <h2 className="text-base font-semibold text-slate-800 mb-5">步骤 {step + 1}: {STEPS[step]}</h2>
+        <h2 className="text-base font-semibold text-slate-800 mb-5">
+          {t.newTask.stepTitle(step + 1, steps[step])}
+        </h2>
         {stepContent[step]}
       </div>
 
-      {/* Nav buttons */}
       <div className="flex justify-between mt-5">
         <button
-          onClick={() => setStep(s => s - 1)}
+          onClick={() => setStep(current => current - 1)}
           disabled={step === 0}
           className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 disabled:opacity-40 transition-colors"
         >
           <ChevronLeft size={15} />
-          上一步
+          {t.newTask.actions.previous}
         </button>
-        {step < STEPS.length - 1 ? (
+        {step < steps.length - 1 ? (
           <button
-            onClick={() => setStep(s => s + 1)}
+            onClick={() => setStep(current => current + 1)}
             disabled={step === 0 && !inputPath}
             className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-xl hover:bg-blue-700 disabled:opacity-40 transition-colors"
           >
-            下一步
+            {t.newTask.actions.next}
             <ChevronRight size={15} />
           </button>
         ) : (
@@ -398,19 +519,10 @@ export function NewTaskPage() {
             className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-xl hover:bg-blue-700 disabled:opacity-40 transition-colors"
           >
             {createMutation.isPending ? <Loader2 size={15} className="animate-spin" /> : '🚀'}
-            开始执行
+            {t.newTask.actions.start}
           </button>
         )}
       </div>
-    </div>
-  )
-}
-
-function ConfirmRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex">
-      <span className="text-slate-500 w-28 shrink-0">{label}:</span>
-      <span className="text-slate-900 font-medium">{value}</span>
     </div>
   )
 }

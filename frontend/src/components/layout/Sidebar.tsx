@@ -1,15 +1,17 @@
 import { NavLink } from 'react-router-dom'
 import { LayoutDashboard, ListChecks, PlusCircle, Settings, Cpu } from 'lucide-react'
 import { cn } from '../../lib/utils'
-
-const navItems = [
-  { to: '/', label: '仪表盘', icon: LayoutDashboard, end: true },
-  { to: '/tasks', label: '任务列表', icon: ListChecks, end: false },
-  { to: '/tasks/new', label: '新建任务', icon: PlusCircle, end: false },
-  { to: '/settings', label: '全局设置', icon: Settings, end: false },
-]
+import { useI18n } from '../../i18n/useI18n'
 
 export function Sidebar() {
+  const { t } = useI18n()
+  const navItems = [
+    { to: '/', label: t.nav.dashboard, icon: LayoutDashboard, end: true },
+    { to: '/tasks', label: t.nav.tasks, icon: ListChecks, end: false },
+    { to: '/tasks/new', label: t.nav.newTask, icon: PlusCircle, end: false },
+    { to: '/settings', label: t.nav.settings, icon: Settings, end: false },
+  ]
+
   return (
     <aside className="fixed left-0 top-0 h-full w-[220px] bg-slate-900 flex flex-col z-40">
       {/* Logo area */}
@@ -19,7 +21,7 @@ export function Sidebar() {
         </div>
         <div>
           <div className="text-white font-semibold text-sm leading-tight">Translip</div>
-          <div className="text-slate-400 text-xs leading-tight">Pipeline Manager</div>
+          <div className="text-slate-400 text-xs leading-tight">{t.nav.subtitle}</div>
         </div>
       </div>
 

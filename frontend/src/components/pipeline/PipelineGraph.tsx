@@ -1,6 +1,7 @@
 import { cn } from '../../lib/utils'
-import { STAGE_LABELS, STAGE_ORDER } from '../../lib/utils'
 import type { TaskStage } from '../../types'
+import { type StageKey, type StageShortKey } from '../../i18n/formatters'
+import { useI18n } from '../../i18n/useI18n'
 
 const STATUS_NODE_STYLE: Record<string, string> = {
   pending: 'border-2 border-dashed border-slate-300 bg-white text-slate-400',
@@ -18,6 +19,7 @@ interface PipelineGraphProps {
 }
 
 export function PipelineGraph({ stages, activeStage, onStageClick }: PipelineGraphProps) {
+  const { getStageLabel, getStageShortLabel, t } = useI18n()
   const stageMap = new Map(stages.map(s => [s.stage_name, s]))
 
   const rows = [
@@ -33,13 +35,14 @@ export function PipelineGraph({ stages, activeStage, onStageClick }: PipelineGra
             const stage = stageMap.get(stageName)
             const status = stage?.status ?? 'pending'
             const isActive = stageName === activeStage
-            const shortName = stageName === 'stage1' ? 'Stage 1' : stageName.toUpperCase()
+            const shortName = getStageShortLabel(stageName as StageShortKey)
             const pct = stage?.progress_percent ?? 0
 
             return (
               <div key={stageName} className="flex items-center gap-2">
                 <button
                   onClick={() => onStageClick?.(stageName)}
+                  title={getStageLabel(stageName as StageKey)}
                   className={cn(
                     'relative rounded-xl px-3 py-2 min-w-[90px] text-center transition-all cursor-pointer',
                     STATUS_NODE_STYLE[status],
@@ -54,13 +57,13 @@ export function PipelineGraph({ stages, activeStage, onStageClick }: PipelineGra
                     <div className="text-xs mt-0.5">✓</div>
                   )}
                   {status === 'cached' && (
-                    <div className="text-xs mt-0.5">缓存</div>
+                    <div className="text-xs mt-0.5">{t.pipeline.cached}</div>
                   )}
                   {status === 'failed' && (
                     <div className="text-xs mt-0.5">✕</div>
                   )}
                   {status === 'pending' && (
-                    <div className="text-xs mt-0.5">···</div>
+                    <div className="text-xs mt-0.5">{t.pipeline.pending}</div>
                   )}
                   {status === 'running' && isActive && (
                     <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-blue-500 rounded-full animate-pulse" />

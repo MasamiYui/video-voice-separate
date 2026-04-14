@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MainLayout } from './components/layout/MainLayout'
+import { I18nProvider } from './i18n/I18nProvider'
 import { DashboardPage } from './pages/DashboardPage'
 import { TaskListPage } from './pages/TaskListPage'
 import { NewTaskPage } from './pages/NewTaskPage'
@@ -19,17 +20,19 @@ const queryClient = new QueryClient({
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<MainLayout />}>
-            <Route index element={<DashboardPage />} />
-            <Route path="tasks" element={<TaskListPage />} />
-            <Route path="tasks/new" element={<NewTaskPage />} />
-            <Route path="tasks/:id" element={<TaskDetailPage />} />
-            <Route path="settings" element={<SettingsPage />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
+      <I18nProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/" element={<MainLayout />}>
+              <Route index element={<DashboardPage />} />
+              <Route path="tasks" element={<TaskListPage />} />
+              <Route path="tasks/new" element={<NewTaskPage />} />
+              <Route path="tasks/:id" element={<TaskDetailPage />} />
+              <Route path="settings" element={<SettingsPage />} />
+            </Route>
+          </Routes>
+        </BrowserRouter>
+      </I18nProvider>
     </QueryClientProvider>
   )
 }

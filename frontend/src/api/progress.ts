@@ -11,7 +11,9 @@ export function subscribeToProgress(
     try {
       const data = JSON.parse(e.data)
       onEvent({ type: type as ProgressEvent['type'], ...data })
-    } catch {}
+    } catch {
+      return
+    }
   }
 
   es.addEventListener('progress', e => handle(e as MessageEvent, 'progress'))

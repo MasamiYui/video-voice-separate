@@ -1,8 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
 import { Monitor, CheckCircle, AlertCircle } from 'lucide-react'
 import { systemApi } from '../../api/config'
+import { useI18n } from '../../i18n/useI18n'
 
 export function Header() {
+  const { locale, setLocale, t } = useI18n()
   const { data: sysInfo } = useQuery({
     queryKey: ['system-info'],
     queryFn: systemApi.getInfo,
@@ -14,6 +16,34 @@ export function Header() {
     <header className="fixed top-0 right-0 left-[220px] h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 z-30">
       <div />
       <div className="flex items-center gap-4">
+        <div
+          className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1"
+          aria-label={t.header.languageSwitcherLabel}
+          title={t.header.languageSwitcherLabel}
+        >
+          <button
+            type="button"
+            onClick={() => setLocale('zh-CN')}
+            className={`rounded-lg px-2.5 py-1 text-xs font-medium transition-colors ${
+              locale === 'zh-CN'
+                ? 'bg-white text-slate-900 shadow-sm'
+                : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            中文
+          </button>
+          <button
+            type="button"
+            onClick={() => setLocale('en-US')}
+            className={`rounded-lg px-2.5 py-1 text-xs font-medium transition-colors ${
+              locale === 'en-US'
+                ? 'bg-white text-slate-900 shadow-sm'
+                : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            EN
+          </button>
+        </div>
         {sysInfo && (
           <>
             <div className="flex items-center gap-1.5 text-sm text-slate-600">
@@ -22,14 +52,14 @@ export function Header() {
             </div>
             <div className="flex items-center gap-1.5 text-sm">
               <CheckCircle size={14} className="text-emerald-500" />
-              <span className="text-slate-600">Ready</span>
+              <span className="text-slate-600">{t.header.ready}</span>
             </div>
           </>
         )}
         {!sysInfo && (
           <div className="flex items-center gap-1.5 text-sm text-slate-400">
             <AlertCircle size={14} />
-            <span>连接中...</span>
+            <span>{t.header.connecting}</span>
           </div>
         )}
       </div>
