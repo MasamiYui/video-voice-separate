@@ -169,6 +169,40 @@ def test_qwen_backend_uses_reusable_voice_clone_prompt(tmp_path: Path, monkeypat
     assert fake_model.generate_calls[0]["max_new_tokens"] == _max_new_tokens_for(segment)
 
 
+def test_qwen_max_new_tokens_is_calibrated_to_12hz_audio_budget() -> None:
+    from translip.dubbing.backend import SynthSegmentInput
+    from translip.dubbing.qwen_tts_backend import _max_new_tokens_for
+
+    short = SynthSegmentInput(
+        segment_id="seg-short",
+        speaker_id="spk_0000",
+        target_lang="en",
+        target_text="You are the Devil.",
+        source_duration_sec=1.0,
+        duration_budget_sec=1.48,
+    )
+    medium = SynthSegmentInput(
+        segment_id="seg-medium",
+        speaker_id="spk_0001",
+        target_lang="en",
+        target_text="Your father is a trouble officer.",
+        source_duration_sec=4.41,
+        duration_budget_sec=2.16,
+    )
+    long = SynthSegmentInput(
+        segment_id="seg-long",
+        speaker_id="spk_0001",
+        target_lang="en",
+        target_text="You are all in debt.",
+        source_duration_sec=9.55,
+        duration_budget_sec=1.82,
+    )
+
+    assert _max_new_tokens_for(short) == 22
+    assert _max_new_tokens_for(medium) == 66
+    assert _max_new_tokens_for(long) == 143
+
+
 def test_build_backend_returns_qwen_backend() -> None:
     from translip.dubbing.runner import _build_backend
 

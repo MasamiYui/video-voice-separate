@@ -199,3 +199,104 @@ uv run python scripts/run_task_a_to_e.py \
   1. 缩短译文或在任务 C 增加更强的时长约束
   2. 降低任务 D 对极短句的失败率
   3. 视需要继续优化回读评测耗时
+
+## 9. 2026-04-15 真实任务补充记录: `哪吒预告片.mp4`
+
+补充验证输入:
+
+- 源视频: `/Users/masamiyui/Downloads/哪吒预告片.mp4`
+- pipeline 目录: `/Users/masamiyui/.cache/translip/output-pipeline/task-20260415-093104`
+
+这轮补充验证确认了一件重要的事:
+
+- **最终成片“少很多配音”不一定等于 Task D 没生成音频**
+- 有可能是 `Task D` 生成了音频, 但质量或时长异常, 导致 `Task E` 在时间轴拟合和 overlap resolve 时把很多段排掉
+
+### 9.1 本次真实问题的两层拆分
+
+第一层是完整性问题:
+
+- 早期结果里 `Task E mix_report.en.json` 只有 `placed_count = 14`, `skipped_count = 15`
+- 根因之一是 `Task D` 的 `max_new_tokens` 预算和 `Qwen3-TTS 12Hz` 音频 token 速率不匹配, 导致很多短句被生成为明显偏长的音频
+- 另一层原因是 `Task E` 的 conservative fit 规则对轻微超窗句段不够保守, 相邻句子会互相挤掉
+
+这部分已经在后续修复中解决:
+
+- 同一真实任务最终已经达到 `placed_count = 29`, `skipped_count = 0`
+- 说明这次“成片少很多配音”的主问题是 **段级时长失控 + 时间线重叠淘汰**, 不是导出层丢音
+
+第二层是质量问题:
+
+- 即使所有 29 段都已经进入最终时间线, `Task D` 里仍然有不少句段的 `overall_status = failed/review`
+- 这类问题不会再造成“整段消失”, 但会继续影响听感、可懂度和说话人相似度
+
+### 9.2 这里说的 “quality cleaning” 是什么
+
+这里的 “quality cleaning” 指的是:
+
+- **不再修复 pipeline 完整性**
+- **只针对少数异常句段做定点清洗**
+
+典型动作包括:
+
+1. 裁掉明显的前后静音
+2. 把近似空白或近似无语义音频判为坏样本后重合成
+3. 换更合适的 reference clip 重跑单个 `segment_id`
+4. 对特别不适合 TTS 的英文句子做轻量改写后重跑
+5. 只重跑问题句段, 不重跑整条视频
+
+### 9.3 本次真实任务里, 什么样的段属于 “待清洗”
+
+以下现象都属于可以进入 quality cleaning 阶段的信号:
+
+1. `backread_text` 为空或接近空
+   - 这通常意味着音频里有效语音极少, 或者发声异常到回读模型无法识别
+
+2. `backread_text` 只识别出开头 1 到 2 个词
+   - 这通常意味着句子被截断, 或者中后段发音已经失真
+
+3. 文本基本识别正确, 但 `speaker_similarity` 很低
+   - 这说明“说对了, 但不像目标说话人”
+
+4. 时长已能放进时间线, 但 `intelligibility_status` 仍然是 `failed`
+   - 这类段不会再被时间线淘汰, 但会直接影响成片可听性
+
+### 9.4 本次真实任务里的代表性异常段
+
+1. 近似空白 / 无法回读:
+   - `seg-0003`
+   - `seg-0004`
+   - `seg-0005`
+   - `seg-0021`
+   - `seg-0027`
+   - `seg-0028`
+   - `seg-0029`
+
+2. 只读出少量词, 存在明显截断或失真:
+   - `seg-0008`
+   - `seg-0012`
+   - `seg-0020`
+
+3. 回读内容明显跑偏:
+   - `seg-0015`
+   - `seg-0018`
+   - `seg-0025`
+
+4. 文本可读, 但说话人相似度很低:
+   - `seg-0024`
+   - `seg-0026`
+
+### 9.5 这条记录的结论
+
+对 `哪吒预告片.mp4` 这类真实任务, 后续排查时要先区分两类问题:
+
+1. 如果 `Task E placed_count` 明显偏低, 先查完整性链路
+   - `Task D` 时长预算
+   - `Task E` fit strategy
+   - overlap resolve
+
+2. 如果 `Task E` 已经全量放入时间线, 但成片听起来仍差, 这时再进入 quality cleaning
+   - 重点看 `backread_text`
+   - `text_similarity`
+   - `speaker_similarity`
+   - 是否存在明显静音 / 近空白 / 截断

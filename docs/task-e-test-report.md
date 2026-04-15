@@ -124,3 +124,62 @@ Task E is now validated on a full real-video run with the migrated
 `Qwen3-TTS` Task D pipeline. The end-to-end local workflow from stage 1 through
 Task E completes successfully on `MacBook M4 16GB`, and the current remaining
 gap is quality/yield optimization rather than pipeline breakage.
+
+## 2026-04-15 Follow-up: `哪吒预告片.mp4`
+
+An additional real-world validation was recorded on:
+
+- source video: `/Users/masamiyui/Downloads/哪吒预告片.mp4`
+- pipeline root: `/Users/masamiyui/.cache/translip/output-pipeline/task-20260415-093104`
+
+This follow-up is important because it exposed a failure mode that is different
+from a hard pipeline crash.
+
+### Initial observed symptom
+
+The first exported dub video for this task did not lose total runtime, but it
+subjectively "missed many voiced lines".
+
+Observed state before the fix:
+
+- `Task E placed_count = 14`
+- `Task E skipped_count = 15`
+- total timeline duration still matched the source video duration
+
+This means the issue was not "Task G exported a truncated video". The issue was
+that many segment audios were already being dropped before final muxing.
+
+### Root cause recorded from this run
+
+Two causes stacked together:
+
+1. `Task D` over-generated many short lines
+   - `Qwen3-TTS` token budgeting was too loose for the model's `12Hz` audio
+     token rate
+   - several short lines became much longer than their source timing windows
+
+2. `Task E` conservative fitting still allowed some short overruns to stay as
+   passthrough segments
+   - those segments then occupied the next line's window
+   - overlap resolution skipped the weaker neighbor instead of fitting both
+
+### State after the fix
+
+After the Task D token-budget fix and the Task E fit-policy refinement, the
+same real task was re-rendered again.
+
+Observed state after the fix:
+
+- `Task E placed_count = 29`
+- `Task E skipped_count = 0`
+- fit strategies:
+  - `compress = 24`
+  - `pad = 5`
+
+The recorded takeaway is:
+
+- when final audio "sounds incomplete", first inspect `Task E mix_report`
+- if `placed_count` is low, treat it as a timeline-yield problem, not a video
+  export problem
+- once `placed_count` returns to full coverage, remaining work moves to `Task D`
+  segment-quality cleanup instead of Task E timeline recovery

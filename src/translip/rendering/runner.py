@@ -33,6 +33,9 @@ from .export import (
 
 logger = logging.getLogger(__name__)
 OVERLAP_TOLERANCE_SEC = 0.05
+SHORT_SEGMENT_COMPRESS_MAX_SOURCE_SEC = 1.5
+SHORT_SEGMENT_COMPRESS_MAX_OVERFLOW_SEC = 0.75
+SHORT_SEGMENT_COMPRESS_MAX_RATIO = 1.75
 
 
 @dataclass(slots=True)
@@ -385,11 +388,19 @@ def _fit_strategy_for_item(*, item: TimelineItem, request: RenderDubRequest) -> 
     if item.source_duration_sec <= 0 or item.generated_duration_sec <= 0:
         return "invalid_duration"
     ratio = item.generated_duration_sec / item.source_duration_sec
-    direct_upper = 1.20 if request.fit_policy == "conservative" else 1.25
+    overflow_sec = item.generated_duration_sec - item.source_duration_sec
+    direct_upper = 1.0 if request.fit_policy == "conservative" else 1.05
     pad_lower = 0.60 if request.fit_policy == "conservative" else 0.55
     if 0.85 <= ratio <= direct_upper:
         return "direct"
     if direct_upper < ratio <= request.max_compress_ratio:
+        return "compress"
+    if (
+        request.fit_policy == "conservative"
+        and item.source_duration_sec <= SHORT_SEGMENT_COMPRESS_MAX_SOURCE_SEC
+        and 0.0 < overflow_sec <= SHORT_SEGMENT_COMPRESS_MAX_OVERFLOW_SEC
+        and ratio <= SHORT_SEGMENT_COMPRESS_MAX_RATIO
+    ):
         return "compress"
     if pad_lower <= ratio < 0.85:
         return "pad"

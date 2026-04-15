@@ -18,6 +18,11 @@ _LANGUAGE_NAMES = {
     "ja": "Japanese",
 }
 
+_QWEN_AUDIO_TOKENS_PER_SEC = 12
+_QWEN_TOKEN_HEADROOM_RATIO = 1.25
+_QWEN_MIN_NEW_TOKENS = 12
+_QWEN_MAX_NEW_TOKENS = 256
+
 
 def _load_qwen_package():
     try:
@@ -76,7 +81,8 @@ def _max_new_tokens_for(segment: SynthSegmentInput) -> int:
         float(segment.source_duration_sec),
         0.8,
     )
-    return max(48, min(256, int(round(target_sec * 24 + 24))))
+    calibrated_budget = target_sec * _QWEN_AUDIO_TOKENS_PER_SEC * _QWEN_TOKEN_HEADROOM_RATIO
+    return max(_QWEN_MIN_NEW_TOKENS, min(_QWEN_MAX_NEW_TOKENS, int(round(calibrated_budget))))
 
 
 def _normalize_waveform(waveform) -> np.ndarray:
