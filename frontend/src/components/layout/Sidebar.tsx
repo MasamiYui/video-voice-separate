@@ -1,15 +1,45 @@
-import { NavLink } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { LayoutDashboard, ListChecks, PlusCircle, Settings, Cpu } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { useI18n } from '../../i18n/useI18n'
 
+function normalizePathname(pathname: string) {
+  if (pathname === '/') return pathname
+  return pathname.replace(/\/+$/, '')
+}
+
 export function Sidebar() {
   const { t } = useI18n()
+  const { pathname } = useLocation()
+  const currentPath = normalizePathname(pathname)
+  const isNewTaskRoute = currentPath === '/tasks/new' || currentPath.startsWith('/tasks/new/')
+
   const navItems = [
-    { to: '/', label: t.nav.dashboard, icon: LayoutDashboard, end: true },
-    { to: '/tasks', label: t.nav.tasks, icon: ListChecks, end: false },
-    { to: '/tasks/new', label: t.nav.newTask, icon: PlusCircle, end: false },
-    { to: '/settings', label: t.nav.settings, icon: Settings, end: false },
+    {
+      to: '/',
+      label: t.nav.dashboard,
+      icon: LayoutDashboard,
+      isActive: currentPath === '/',
+    },
+    {
+      to: '/tasks',
+      label: t.nav.tasks,
+      icon: ListChecks,
+      isActive:
+        currentPath === '/tasks' || (currentPath.startsWith('/tasks/') && !isNewTaskRoute),
+    },
+    {
+      to: '/tasks/new',
+      label: t.nav.newTask,
+      icon: PlusCircle,
+      isActive: isNewTaskRoute,
+    },
+    {
+      to: '/settings',
+      label: t.nav.settings,
+      icon: Settings,
+      isActive: currentPath === '/settings',
+    },
   ]
 
   return (
@@ -27,23 +57,21 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 px-3 py-4 space-y-1">
-        {navItems.map(({ to, label, icon: Icon, end }) => (
-          <NavLink
+        {navItems.map(({ to, label, icon: Icon, isActive }) => (
+          <Link
             key={to}
             to={to}
-            end={end}
-            className={({ isActive }) =>
-              cn(
-                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
-                isActive
-                  ? 'bg-blue-600 text-white'
-                  : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100',
-              )
-            }
+            aria-current={isActive ? 'page' : undefined}
+            className={cn(
+              'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+              isActive
+                ? 'bg-blue-600 text-white'
+                : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100',
+            )}
           >
             <Icon size={16} />
             {label}
-          </NavLink>
+          </Link>
         ))}
       </nav>
 
