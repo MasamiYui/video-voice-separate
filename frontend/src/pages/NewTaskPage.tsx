@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronRight, ChevronLeft, Loader2 } from 'lucide-react'
 import { tasksApi } from '../api/tasks'
 import { configApi, systemApi } from '../api/config'
+import { PageContainer } from '../components/layout/PageContainer'
 import type { CreateTaskRequest, TaskConfig } from '../types'
 import { LANGUAGE_CODES, STAGE_ORDER } from '../i18n/formatters'
 import { useI18n } from '../i18n/useI18n'
@@ -462,7 +463,7 @@ export function NewTaskPage() {
   const stepContent = [step1, step2, step3, step4]
 
   return (
-    <div className="max-w-2xl">
+    <PageContainer className="max-w-2xl">
       <h1 className="text-2xl font-bold text-slate-900 mb-6">{t.newTask.title}</h1>
 
       <div className="flex items-center mb-8">
@@ -523,6 +524,6 @@ export function NewTaskPage() {
           </button>
         )}
       </div>
-    </div>
+    </PageContainer>
   )
 }

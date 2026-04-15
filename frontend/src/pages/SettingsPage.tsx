@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { systemApi } from '../api/config'
+import { PageContainer } from '../components/layout/PageContainer'
 import { formatBytes } from '../lib/utils'
 import { CheckCircle, XCircle } from 'lucide-react'
 import { useI18n } from '../i18n/useI18n'
@@ -12,7 +13,7 @@ export function SettingsPage() {
   })
 
   return (
-    <div className="max-w-3xl space-y-6">
+    <PageContainer className="max-w-3xl space-y-6">
       <h1 className="text-2xl font-bold text-slate-900">{t.settings.title}</h1>
 
       {/* System info */}
@@ -68,7 +69,7 @@ export function SettingsPage() {
           <p className="text-slate-400">{t.settings.aboutSubtitle}</p>
         </div>
       </section>
-    </div>
+    </PageContainer>
   )
 }
 

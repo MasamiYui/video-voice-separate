@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { tasksApi } from '../api/tasks'
+import { PageContainer } from '../components/layout/PageContainer'
 import { StatusBadge } from '../components/shared/StatusBadge'
 import { ProgressBar } from '../components/shared/ProgressBar'
 import { PipelineGraph } from '../components/pipeline/PipelineGraph'
@@ -65,7 +66,7 @@ export function DashboardPage() {
     .slice(0, 5)
 
   return (
-    <div className="space-y-6 max-w-5xl">
+    <PageContainer className="max-w-5xl space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-slate-900">{t.dashboard.title}</h1>
         <Link
@@ -151,6 +152,6 @@ export function DashboardPage() {
           </Link>
         </div>
       )}
-    </div>
+    </PageContainer>
   )
 }

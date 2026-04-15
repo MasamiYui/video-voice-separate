@@ -3,6 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, RotateCcw, Square, Trash2, Download, Eye } from 'lucide-react'
 import { tasksApi } from '../api/tasks'
+import { PageContainer } from '../components/layout/PageContainer'
 import { StatusBadge } from '../components/shared/StatusBadge'
 import { ProgressBar } from '../components/shared/ProgressBar'
 import { PipelineGraph } from '../components/pipeline/PipelineGraph'
@@ -64,9 +65,9 @@ export function TaskDetailPage() {
 
   if (!task) {
     return (
-      <div className="py-20 text-center text-slate-400">
+      <PageContainer className="max-w-4xl py-20 text-center text-slate-400">
         <div className="text-lg">{t.taskDetail.loading}</div>
-      </div>
+      </PageContainer>
     )
   }
 
@@ -80,7 +81,7 @@ export function TaskDetailPage() {
   const artifacts: Artifact[] = artifactsData?.artifacts ?? []
 
   return (
-    <div className="max-w-4xl space-y-5">
+    <PageContainer className="max-w-4xl space-y-5">
       {/* Header */}
       <div>
         <Link to="/tasks" className="flex items-center gap-1.5 text-sm text-slate-400 hover:text-slate-600 mb-3 w-fit">
@@ -225,7 +226,7 @@ export function TaskDetailPage() {
           </button>
         </div>
       </div>
-    </div>
+    </PageContainer>
   )
 }
 
