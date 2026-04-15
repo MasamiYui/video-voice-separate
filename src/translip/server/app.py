@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .database import init_db
 from .routes.artifacts import router as artifacts_router
+from .routes.atomic_tools import router as atomic_tools_router
 from .routes.config import router as config_router
 from .routes.progress import router as progress_router
 from .routes.system import router as system_router
@@ -51,6 +52,7 @@ app.include_router(progress_router)
 app.include_router(config_router)
 app.include_router(system_router)
 app.include_router(artifacts_router)
+app.include_router(atomic_tools_router)
 
 # Serve frontend static files if built
 _FRONTEND_DIST = _find_project_root(Path(__file__).resolve()) / "frontend" / "dist"
