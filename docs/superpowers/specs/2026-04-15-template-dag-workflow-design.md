@@ -689,6 +689,150 @@ It should support:
 
 This keeps the UI understandable without exposing arbitrary graph editing.
 
+## Workflow Visualization and Animation
+
+The workflow visualization is not a purely decorative UI detail. It is part of the workflow contract because it constrains:
+
+- what graph data the backend must return
+- how node states are represented
+- how templates are explained to users
+- how running workflows are monitored in real time
+
+### Default Visualization Target
+
+The default graph shown in the UI should be the resolved execution subgraph for the currently selected template or running task.
+
+Do not default to the full capability graph.
+
+The full capability graph may be available behind an explicit secondary view, but the primary experience should answer:
+
+- what will run for this template
+- what is running now
+- what has already completed, failed, or been reused from cache
+
+### Graph Layout
+
+Use a deterministic layered DAG layout, not a force-directed graph.
+
+The graph should be grouped into visual lanes:
+
+- audio spine
+- OCR subtitle line
+- video cleanup line
+- delivery
+
+Benefits:
+
+- stable mental model between runs
+- easier status comparison across templates
+- less visual noise during animation
+- simpler mobile and low-motion fallback rendering
+
+### Runtime Visualization
+
+The execution subgraph should remain visible while a task is running.
+
+The task detail experience should not replace the graph with a plain status list during execution. The graph is the primary live monitoring surface, with textual details as a secondary drill-down surface.
+
+The graph must represent at least these node states:
+
+- `pending`
+- `running`
+- `cached`
+- `succeeded`
+- `failed`
+- `skipped`
+
+Workflow-level state must also surface `partial_success` distinctly rather than collapsing it into generic success.
+
+### Animation Semantics
+
+Animation should communicate execution state, not exist for decoration alone.
+
+Recommended motion behavior:
+
+- initial load
+  - nodes and edges reveal in a short staged sequence
+- running node
+  - active node receives primary emphasis
+  - active outbound edges show directional flow
+- cached node
+  - visibly distinct from `pending`
+  - lower-motion, lower-emphasis styling than actively running nodes
+- succeeded node
+  - subtle completion confirmation motion
+- failed node
+  - animation stops cleanly
+  - failure state becomes visually dominant and easy to identify
+
+The goal is to make execution understandable at a glance, not to maximize motion.
+
+### Drill-Down Interaction
+
+The graph should be drill-down capable.
+
+The first version does not need a fully separate workflow inspector page, but clicking a node should open a compact detail surface that can show:
+
+- node name and group
+- required vs optional role
+- current status
+- progress percent when available
+- short execution summary
+- input artifact references
+- output artifact references
+- manifest link
+- log link
+- error summary when failed
+
+This is preferred over a read-only graph because the graph should become the main entrypoint to understand how a task is progressing and what each node produced.
+
+### Backend Graph Data Contract
+
+The backend should return graph-ready workflow data explicitly rather than requiring the frontend to infer graph structure from manifests.
+
+Recommended payload shape:
+
+- `workflow`
+  - `template_id`
+  - `status`
+  - `selected_policy`
+- `nodes`
+  - `id`
+  - `label`
+  - `group`
+  - `required`
+  - `status`
+  - `progress_percent`
+  - `summary`
+  - `manifest_path`
+  - `log_path`
+- `edges`
+  - `from`
+  - `to`
+  - `state`
+    - `inactive`
+    - `active`
+    - `completed`
+    - `blocked`
+
+This contract should support both:
+
+- pre-run template preview graphs
+- in-progress execution graphs
+
+### Performance and Accessibility
+
+The visualization must support graceful degradation.
+
+Requirements:
+
+- respect `prefers-reduced-motion`
+- allow low-motion rendering on constrained devices
+- support a simplified static graph or node list fallback on small screens
+- avoid physics-based simulation layouts that change continuously
+
+The first implementation should prefer SVG or other deterministic rendering approaches over visually noisy force simulation.
+
 ## Integration Strategy for Sibling Repositories
 
 The first implementation can bridge the sibling repositories rather than immediately copying their internals into this repo.
