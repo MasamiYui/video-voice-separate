@@ -1,20 +1,91 @@
-# translip
+<div align="center">
+  <img src="docs/assets/brand/translip-logo.svg" alt="translip logo" width="112" />
+  <h1>translip</h1>
+  <p><strong>本地化、多说话人感知的视频配音流水线</strong></p>
+  <p>把音频分离、说话人归因转写、翻译、单说话人 TTS、时间轴回贴和视频交付串成一条可复用的端到端流程，并提供 FastAPI + React 管理界面。</p>
+  <p>
+    <img src="https://img.shields.io/badge/Python-3.11--3.12-3776AB?logo=python&logoColor=white" alt="Python 3.11-3.12" />
+    <img src="https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white" alt="FastAPI" />
+    <img src="https://img.shields.io/badge/React-19-149ECA?logo=react&logoColor=white" alt="React 19" />
+    <img src="https://img.shields.io/badge/License-Apache--2.0-111827" alt="Apache 2.0" />
+    <img src="https://img.shields.io/badge/Status-Beta%20%2F%20Early%20Access-2563EB" alt="Beta / Early Access" />
+  </p>
+  <p>
+    <a href="#快速开始"><strong>快速开始</strong></a> ·
+    <a href="#系统架构"><strong>架构图</strong></a> ·
+    <a href="docs/README.md"><strong>文档索引</strong></a> ·
+    <a href="frontend/README.md"><strong>前端说明</strong></a> ·
+    <a href="README.en.md"><strong>English README</strong></a>
+  </p>
+</div>
 
-本地化、多说话人感知的视频配音流水线。`translip` 把音频分离、带说话人归因的转写、翻译、语音克隆、时间轴回贴和视频导出串成一条可复用的端到端流程，并提供 FastAPI + React 管理界面。
+> **当前状态：Beta / Early Access**
+>
+> `translip` 当前适合研究、实验验证、内部演示、自托管迭代和流程探索。它已经具备端到端链路和管理界面，但定位仍然是快速演进中的 Beta 系统，而不是对外宣称的生产级商业产品。
 
-[文档索引](docs/README.md) · [前端说明](frontend/README.md) · [English Summary](#english-summary)
+## 为什么是 `translip`
 
-## 项目简介
+- **研究路线清晰**：以可拆分的 Stage / Task 管线组织音频分离、转写、翻译、配音、时间轴拟合和交付。
+- **多说话人感知**：不仅输出文本，还围绕说话人 profile / registry 建立可复用资产。
+- **端到端闭环**：从输入媒体到最终 `mp4` 交付是一条完整链路，不是零散脚本集合。
+- **管理界面完整**：提供任务管理、进度追踪、阶段重跑、配置预设和产物下载的 Web UI。
+- **本地优先**：适合在本地或自托管环境中调试模型、控制缓存、追踪中间产物。
 
-- 输入视频或音频，分离人声与背景音
-- 基于 `faster-whisper` + `SpeechBrain` 生成带说话人标签的转写结果
-- 为说话人建立 profile / registry，支持后续任务复用
-- 使用本地 `M2M100` 或 `SiliconFlow API` 生成配音脚本
-- 基于 `Qwen3-TTS` 为每位说话人合成目标语言语音
-- 将配音按原始时间轴回贴，并导出预览版与最终成片
-- 提供任务管理、进度追踪、配置预设和产物下载 Web UI
+## 界面预览
 
-## 流水线结构
+| Dashboard | Task Detail |
+| --- | --- |
+| ![Dashboard](docs/assets/readme/dashboard.png) | ![Task detail](docs/assets/readme/task-detail.png) |
+
+| New Task |
+| --- |
+| ![New task](docs/assets/readme/new-task.png) |
+
+## 系统架构
+
+```mermaid
+flowchart LR
+    Input["输入媒体<br/>Video / Audio"] --> Stage1["Stage 1<br/>音频分离"]
+    Stage1 --> TaskA["Task A<br/>说话人归因转写"]
+    TaskA --> TaskB["Task B<br/>说话人 Profile / Registry"]
+    TaskB --> TaskC["Task C<br/>配音脚本翻译"]
+    TaskC --> TaskD["Task D<br/>单说话人 TTS"]
+    TaskD --> TaskE["Task E<br/>时间轴拟合与混音"]
+    TaskE --> TaskG["Task G<br/>最终视频导出"]
+
+    subgraph ControlPlane["控制平面"]
+        UI["React 管理界面"]
+        API["FastAPI 服务"]
+        DB[("SQLite 任务状态")]
+        Orchestrator["编排 / 缓存 / 产物索引"]
+    end
+
+    UI <--> API
+    API <--> DB
+    API <--> Orchestrator
+    Orchestrator --> Stage1
+    Orchestrator --> TaskA
+    Orchestrator --> TaskB
+    Orchestrator --> TaskC
+    Orchestrator --> TaskD
+    Orchestrator --> TaskE
+    Orchestrator --> TaskG
+
+    TaskE --> Preview["预览混音 / 配音音轨"]
+    TaskG --> Delivery["最终 MP4 交付"]
+```
+
+## 核心能力
+
+- 输入视频或音频，自动分离人声与背景音。
+- 基于 `faster-whisper` + `SpeechBrain` 生成带说话人标签的转写结果。
+- 为说话人建立 profile / registry，支持跨任务复用。
+- 使用本地 `M2M100` 或 `SiliconFlow API` 生成目标语言配音脚本。
+- 基于 `Qwen3-TTS` 为每位说话人合成目标语言语音。
+- 将配音按原始时间轴回贴，并导出预览版与最终成片。
+- 提供任务管理、进度追踪、配置预设和产物下载 Web UI。
+
+## 流水线阶段
 
 | 阶段 | 命令 | 作用 | 主要产物 |
 | --- | --- | --- | --- |
@@ -307,19 +378,6 @@ npm run build
 - [docs/frontend-management-system-design.md](docs/frontend-management-system-design.md)：管理界面设计
 - [frontend/README.md](frontend/README.md)：前端目录与开发说明
 
-## English Summary
+## English README
 
-`translip` is a local speaker-aware dubbing pipeline for video or audio inputs. It combines source separation, speaker-attributed transcription, translation, per-speaker TTS, timeline fitting, and final MP4 export, with a FastAPI + React management UI included.
-
-Quick start:
-
-```bash
-uv sync
-uv run translip run-pipeline --input ./test_video/example.mp4 --output-root ./output-pipeline --target-lang en --write-status
-uv run translip export-video --pipeline-root ./output-pipeline
-```
-
-Useful links:
-
-- [Documentation Index](docs/README.md)
-- [Frontend README](frontend/README.md)
+- [README.en.md](README.en.md)：完整英文版说明
