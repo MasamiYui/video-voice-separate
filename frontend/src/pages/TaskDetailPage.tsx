@@ -1,26 +1,40 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, RotateCcw, Square, Trash2, Download, Eye } from 'lucide-react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { ArrowLeft, Download, RotateCcw, Sparkles, Square, Trash2 } from 'lucide-react'
 import { tasksApi } from '../api/tasks'
 import { PageContainer } from '../components/layout/PageContainer'
+import { PipelineGraph } from '../components/pipeline/PipelineGraph'
 import { StatusBadge } from '../components/shared/StatusBadge'
 import { ProgressBar } from '../components/shared/ProgressBar'
-import { PipelineGraph } from '../components/pipeline/PipelineGraph'
+import { WorkflowNodeDrawer } from '../components/workflow/WorkflowNodeDrawer'
+import { useWorkflowGraph } from '../hooks/useWorkflowGraph'
+import { useWorkflowRuntimeUpdates } from '../hooks/useWorkflowRuntimeUpdates'
 import { formatBytes } from '../lib/utils'
 import { subscribeToProgress } from '../api/progress'
-import type { Task, Artifact } from '../types'
-import { STAGE_ORDER } from '../i18n/formatters'
+import type { Artifact, Task, TaskConfig } from '../types'
 import { useI18n } from '../i18n/useI18n'
 
-const STAGES = STAGE_ORDER
+const ARTIFACT_PREFIX: Record<string, string[]> = {
+  stage1: ['stage1/', 'voice/', 'background/'],
+  'ocr-detect': ['ocr-detect/'],
+  'task-a': ['task-a/voice/', 'task-a/'],
+  'task-b': ['task-b/voice/', 'task-b/'],
+  'task-c': ['task-c/voice/', 'task-c/'],
+  'ocr-translate': ['ocr-translate/'],
+  'task-d': ['task-d/'],
+  'task-e': ['task-e/voice/', 'task-e/'],
+  'subtitle-erase': ['subtitle-erase/'],
+  'task-g': ['task-g/', 'delivery/'],
+}
 
 export function TaskDetailPage() {
-  const { t, formatDuration, getStageLabel, getStageShortLabel } = useI18n()
+  const { t, formatDuration, getStageLabel } = useI18n()
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const [activeStage, setActiveStage] = useState<string | null>(null)
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+  const [hasAutoSelected, setHasAutoSelected] = useState(false)
   const [rerunStage, setRerunStage] = useState('stage1')
 
   const { data: task, refetch } = useQuery({
@@ -32,18 +46,42 @@ export function TaskDetailPage() {
     },
   })
 
+  const templateId = normalizeTemplateId(task?.config.template)
+  const { graph } = useWorkflowGraph(id ?? '', Boolean(id))
+  useWorkflowRuntimeUpdates(id, task?.status === 'running')
+
   const { data: artifactsData } = useQuery({
     queryKey: ['artifacts', id],
     queryFn: () => tasksApi.listArtifacts(id!),
-    enabled: task?.status === 'succeeded',
+    enabled: Boolean(id),
+    refetchInterval: task?.status === 'running' ? 4000 : false,
   })
 
   useEffect(() => {
     if (!id || !task) return
     if (task.status !== 'running') return
-    const unsub = subscribeToProgress(id, () => refetch())
+    const unsub = subscribeToProgress(id, event => {
+      refetch()
+      if (event.type === 'done') {
+        queryClient.invalidateQueries({ queryKey: ['task-graph', id] })
+        queryClient.invalidateQueries({ queryKey: ['artifacts', id] })
+      }
+    })
     return unsub
-  }, [id, refetch, task])
+  }, [id, queryClient, refetch, task])
+
+  useEffect(() => {
+    if (hasAutoSelected) {
+      return
+    }
+    const nextNodeId = task?.current_stage ?? graph?.nodes[0]?.id ?? null
+    if (!nextNodeId) {
+      return
+    }
+    setSelectedNodeId(nextNodeId)
+    setHasAutoSelected(true)
+    setRerunStage(nextNodeId)
+  }, [graph?.nodes, hasAutoSelected, task?.current_stage])
 
   const stopMutation = useMutation({
     mutationFn: () => tasksApi.stop(id!),
@@ -72,267 +110,231 @@ export function TaskDetailPage() {
   }
 
   const elapsedSec = task.elapsed_sec
-  const resolvedActiveStage = activeStage ?? task.current_stage ?? null
-
-  const currentStageObj = resolvedActiveStage
-    ? task.stages.find(s => s.stage_name === resolvedActiveStage)
-    : null
-
   const artifacts: Artifact[] = artifactsData?.artifacts ?? []
+  const selectedNode = graph?.nodes.find(node => node.id === selectedNodeId) ?? null
+  const selectedStage = selectedNodeId
+    ? task.stages.find(stage => stage.stage_name === selectedNodeId) ?? null
+    : null
+  const selectedArtifacts = selectedNode
+    ? artifacts.filter(artifact => (ARTIFACT_PREFIX[selectedNode.id] ?? []).some(prefix => artifact.path.startsWith(prefix)))
+    : []
+
+  const deliveryPolicy = [
+    task.config.video_source,
+    task.config.audio_source,
+    task.config.subtitle_source,
+  ].filter(Boolean).join(' · ')
+
+  const previewFiles = artifacts.filter(artifact => artifact.path.startsWith('task-g/') || artifact.path.startsWith('delivery/')).slice(0, 4)
 
   return (
-    <PageContainer className="max-w-4xl space-y-5">
-      {/* Header */}
+    <PageContainer className="max-w-6xl space-y-6">
       <div>
-        <Link to="/tasks" className="flex items-center gap-1.5 text-sm text-slate-400 hover:text-slate-600 mb-3 w-fit">
+        <Link to="/tasks" className="mb-3 flex w-fit items-center gap-1.5 text-sm text-slate-400 hover:text-slate-600">
           <ArrowLeft size={14} />
           {t.taskDetail.backToList}
         </Link>
-        <div className="flex items-start justify-between">
+        <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">{task.name}</h1>
-            <div className="text-sm text-slate-500 mt-1">{task.id}</div>
+            <h1 className="text-3xl font-bold text-slate-900">{task.name}</h1>
+            <div className="mt-1 text-sm text-slate-500">{task.id}</div>
           </div>
-          <StatusBadge status={task.status} />
+          <div className="flex items-center gap-3">
+            <StatusBadge status={task.status} />
+            <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
+              {t.workflow.templates[templateId]}
+            </span>
+          </div>
         </div>
       </div>
 
-      {/* Progress overview */}
-      <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
-        <div className="flex items-center justify-between mb-3">
-          <div className="text-sm text-slate-600">
-            {t.taskDetail.overallProgress} · {task.status === 'running'
-              ? t.taskDetail.runningFor(formatDuration(elapsedSec))
-              : formatDuration(task.elapsed_sec)}
+      <div className="grid gap-5 xl:grid-cols-[1.55fr_0.85fr]">
+        <div className="rounded-[30px] border border-slate-100 bg-white p-5 shadow-sm">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">
+                {t.workflow.runtimeTitle}
+              </div>
+              <div className="mt-1 text-sm text-slate-500">
+                {task.status === 'running'
+                  ? t.taskDetail.runningFor(formatDuration(elapsedSec))
+                  : formatDuration(task.elapsed_sec)}
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-3xl font-semibold text-slate-900">{task.overall_progress.toFixed(0)}%</div>
+              <div className="text-xs text-slate-400">{t.taskDetail.overallProgress}</div>
+            </div>
           </div>
-          <span className="font-semibold text-slate-900">{task.overall_progress.toFixed(0)}%</span>
-        </div>
-        <ProgressBar value={task.overall_progress} size="lg"
-          color={task.status === 'succeeded' ? 'bg-emerald-500' : task.status === 'failed' ? 'bg-red-500' : 'bg-blue-500'} />
-        {task.current_stage && task.status === 'running' && (
-          <div className="text-xs text-slate-400 mt-2">
-            {t.taskDetail.currentStage(getStageLabel(task.current_stage as keyof typeof t.stages))}
-          </div>
-        )}
-        {task.error_message && (
-          <div className="mt-3 p-3 bg-red-50 rounded-xl text-sm text-red-700 border border-red-200">
-            {task.error_message}
-          </div>
-        )}
-      </div>
 
-      {/* Pipeline graph */}
-      <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
-        <h2 className="text-sm font-semibold text-slate-700 mb-4">{t.taskDetail.pipelineProgress}</h2>
-        <PipelineGraph
-          stages={task.stages}
-          activeStage={resolvedActiveStage ?? undefined}
-          onStageClick={sn => setActiveStage(sn)}
-        />
-      </div>
+          <ProgressBar
+            value={task.overall_progress}
+            size="lg"
+            color={
+              task.status === 'succeeded'
+                ? 'bg-emerald-500'
+                : task.status === 'partial_success'
+                  ? 'bg-amber-500'
+                  : task.status === 'failed'
+                    ? 'bg-rose-500'
+                    : 'bg-sky-500'
+            }
+          />
 
-      {/* Stage detail tabs */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-        <div className="flex overflow-x-auto border-b border-slate-100">
-          {STAGES.map(sn => {
-            const stage = task.stages.find(s => s.stage_name === sn)
-            const isActive = resolvedActiveStage === sn
-            if (!stage) return null
-            return (
-              <button
-                key={sn}
-                onClick={() => setActiveStage(sn)}
-                className={`px-4 py-3 text-sm font-medium whitespace-nowrap flex items-center gap-1.5 border-b-2 -mb-px transition-colors ${
-                  isActive
-                    ? 'border-blue-500 text-blue-700'
-                    : 'border-transparent text-slate-500 hover:text-slate-700'
-                }`}
-              >
-                {getStageShortLabel(sn)}
-                {stage.status === 'running' && (
-                  <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse" />
-                )}
-              </button>
-            )
-          })}
-        </div>
+          {task.error_message && (
+            <div className="mt-4 rounded-[22px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+              {task.error_message}
+            </div>
+          )}
 
-        <div className="p-5">
-          {!activeStage || !currentStageObj ? (
-            <div className="text-sm text-slate-400 text-center py-8">{t.taskDetail.selectStageHint}</div>
+          {graph ? (
+            <div className="mt-5">
+              <PipelineGraph
+                graph={graph}
+                activeStage={selectedNodeId ?? undefined}
+                onStageClick={nodeId => {
+                  setSelectedNodeId(nodeId)
+                  setRerunStage(nodeId)
+                }}
+                showLegend
+              />
+            </div>
           ) : (
-            <StageDetail
-              stage={currentStageObj}
-              taskId={id!}
-              artifacts={artifacts.filter(a => {
-                const stagePrefix: Record<string, string[]> = {
-                  'stage1': ['stage1', 'voice/', 'background/'],
-                  'task-a': ['voice/task-a', 'voice/segments'],
-                  'task-b': ['voice/task-b', 'voice/speaker'],
-                  'task-c': ['voice/task-c', 'voice/translation'],
-                  'task-d': ['voice/task-d'],
-                  'task-e': ['voice/task-e'],
-                  'task-g': ['delivery/'],
-                }
-                return (stagePrefix[currentStageObj.stage_name] ?? []).some(p => a.path.startsWith(p))
-              })}
-            />
+            <div className="mt-5">
+              <PipelineGraph
+                stages={task.stages}
+                templateId={templateId}
+                activeStage={selectedNodeId ?? undefined}
+                onStageClick={nodeId => {
+                  setSelectedNodeId(nodeId)
+                  setRerunStage(nodeId)
+                }}
+                showLegend
+              />
+            </div>
           )}
         </div>
-      </div>
 
-      {/* Actions */}
-      <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
-        <h2 className="text-sm font-semibold text-slate-700 mb-4">{t.taskDetail.actions}</h2>
-        <div className="flex flex-wrap gap-3 items-center">
-          <div className="flex items-center gap-2">
-            <select
-              value={rerunStage}
-              onChange={e => setRerunStage(e.target.value)}
-              className="text-sm border border-slate-200 rounded-xl px-3 py-2 bg-white focus:outline-none"
-            >
-              {STAGES.map(s => (
-                <option key={s} value={s}>{getStageShortLabel(s)}</option>
-              ))}
-            </select>
-            <button
-              onClick={() => rerunMutation.mutate()}
-              disabled={rerunMutation.isPending}
-              className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-xl hover:bg-blue-100 transition-colors"
-            >
-              <RotateCcw size={13} />
-              {t.taskDetail.rerunFromStage}
-            </button>
+        <div className="space-y-5">
+          <div className="rounded-[30px] border border-slate-100 bg-white p-5 shadow-sm">
+            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">
+              <Sparkles size={13} />
+              Runtime Summary
+            </div>
+            <div className="mt-4 space-y-4 text-sm">
+              <InfoRow label={t.newTask.summary.direction} value={`${task.source_lang} → ${task.target_lang}`} />
+              <InfoRow label={t.newTask.summary.template} value={t.workflow.templates[templateId]} />
+              <InfoRow label={t.newTask.summary.deliveryPolicy} value={deliveryPolicy || t.common.notAvailable} />
+              <InfoRow
+                label={t.taskDetail.currentStage(getStageLabel((task.current_stage ?? 'stage1') as keyof typeof t.stages))}
+                value={selectedNode ? getStageLabel(selectedNode.id as keyof typeof t.stages) : t.workflow.emptySelection}
+              />
+            </div>
           </div>
 
-          {(task.status === 'running' || task.status === 'pending') && (
-            <button
-              onClick={() => stopMutation.mutate()}
-              className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-xl hover:bg-amber-100 transition-colors"
-            >
-              <Square size={13} />
-              {t.taskDetail.stopTask}
-            </button>
-          )}
+          <div className="rounded-[30px] border border-slate-100 bg-white p-5 shadow-sm">
+            <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">
+              Delivery Artifacts
+            </div>
+            {previewFiles.length === 0 ? (
+              <div className="text-sm text-slate-400">{t.workflow.drawer.noArtifacts}</div>
+            ) : (
+              <div className="space-y-2">
+                {previewFiles.map(artifact => (
+                  <div key={artifact.path} className="flex items-center justify-between rounded-[20px] bg-slate-50 px-3 py-2 text-sm">
+                    <div className="min-w-0">
+                      <div className="truncate font-medium text-slate-700">{artifact.path.split('/').pop()}</div>
+                      <div className="text-xs text-slate-400">{formatBytes(artifact.size_bytes)}</div>
+                    </div>
+                    <a
+                      href={`/api/tasks/${task.id}/artifacts/${artifact.path}`}
+                      download
+                      className="rounded-2xl p-2 text-slate-400 transition-colors hover:bg-slate-200 hover:text-slate-700"
+                    >
+                      <Download size={14} />
+                    </a>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
-          <button
-            onClick={() => {
-              if (confirm(t.taskDetail.deleteConfirm)) deleteMutation.mutate()
-            }}
-            className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-red-700 bg-red-50 border border-red-200 rounded-xl hover:bg-red-100 transition-colors"
-          >
-            <Trash2 size={13} />
-            {t.taskDetail.deleteTask}
-          </button>
+          <div className="rounded-[30px] border border-slate-100 bg-white p-5 shadow-sm">
+            <h2 className="mb-4 text-sm font-semibold text-slate-700">{t.taskDetail.actions}</h2>
+            <div className="flex flex-wrap gap-3">
+              <div className="flex items-center gap-2">
+                <select
+                  value={rerunStage}
+                  onChange={event => setRerunStage(event.target.value)}
+                  className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none"
+                >
+                  {task.stages.map(stage => (
+                    <option key={stage.stage_name} value={stage.stage_name}>
+                      {getStageLabel(stage.stage_name as keyof typeof t.stages)}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => rerunMutation.mutate()}
+                  disabled={rerunMutation.isPending}
+                  className="inline-flex items-center gap-2 rounded-2xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-medium text-sky-700 transition-colors hover:bg-sky-100"
+                >
+                  <RotateCcw size={13} />
+                  {t.taskDetail.rerunFromStage}
+                </button>
+              </div>
+
+              {(task.status === 'running' || task.status === 'pending') && (
+                <button
+                  onClick={() => stopMutation.mutate()}
+                  className="inline-flex items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-700 transition-colors hover:bg-amber-100"
+                >
+                  <Square size={13} />
+                  {t.taskDetail.stopTask}
+                </button>
+              )}
+
+              <button
+                onClick={() => {
+                  if (confirm(t.taskDetail.deleteConfirm)) deleteMutation.mutate()
+                }}
+                className="inline-flex items-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700 transition-colors hover:bg-rose-100"
+              >
+                <Trash2 size={13} />
+                {t.taskDetail.deleteTask}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
+
+      <WorkflowNodeDrawer
+        node={selectedNode}
+        stage={selectedStage}
+        artifacts={selectedArtifacts}
+        taskId={task.id}
+        onClose={() => setSelectedNodeId(null)}
+      />
     </PageContainer>
   )
 }
 
-function StageDetail({ stage, taskId, artifacts }: {
-  stage: NonNullable<Task['stages'][number]>
-  taskId: string
-  artifacts: Artifact[]
-}) {
-  const { t, formatDuration, getStageLabel } = useI18n()
-  const [manifest, setManifest] = useState<string | null>(null)
-  const [showManifest, setShowManifest] = useState(false)
-
-  async function loadManifest() {
-    try {
-      const data = await tasksApi.getStageManifest(taskId, stage.stage_name)
-      setManifest(JSON.stringify(data, null, 2))
-      setShowManifest(true)
-    } catch {
-      setShowManifest(false)
-    }
+function normalizeTemplateId(value: unknown): TaskConfig['template'] {
+  if (
+    value === 'asr-dub-basic' ||
+    value === 'asr-dub+ocr-subs' ||
+    value === 'asr-dub+ocr-subs+erase'
+  ) {
+    return value
   }
+  return 'asr-dub-basic'
+}
 
+function InfoRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <h3 className="font-semibold text-slate-800">
-          {getStageLabel(stage.stage_name as keyof typeof t.stages)}
-        </h3>
-        <StatusBadge status={stage.status} size="sm" />
-      </div>
-
-      <div className="grid grid-cols-3 gap-4 text-sm">
-        <div>
-          <div className="text-slate-500 mb-1">{t.taskDetail.stageDetails.progress}</div>
-          <div className="flex items-center gap-2">
-            <ProgressBar value={stage.progress_percent} className="flex-1" />
-            <span className="font-medium">{stage.progress_percent.toFixed(0)}%</span>
-          </div>
-        </div>
-        <div>
-          <div className="text-slate-500 mb-1">{t.taskDetail.stageDetails.duration}</div>
-          <div className="font-medium">{formatDuration(stage.elapsed_sec)}</div>
-        </div>
-        <div>
-          <div className="text-slate-500 mb-1">{t.taskDetail.stageDetails.cache}</div>
-          <div className="font-medium">
-            {stage.cache_hit ? t.taskDetail.stageDetails.cacheHit : t.taskDetail.stageDetails.cacheMiss}
-          </div>
-        </div>
-      </div>
-
-      {stage.current_step && (
-        <div className="text-sm text-slate-600 bg-slate-50 rounded-lg px-3 py-2">
-          {t.taskDetail.stageDetails.currentStep(stage.current_step)}
-        </div>
-      )}
-
-      {stage.error_message && (
-        <div className="p-3 bg-red-50 rounded-xl text-sm text-red-700 border border-red-200">
-          {t.taskDetail.stageDetails.error(stage.error_message)}
-        </div>
-      )}
-
-      {artifacts.length > 0 && (
-        <div>
-          <div className="text-sm font-medium text-slate-700 mb-2">{t.taskDetail.stageDetails.artifacts}</div>
-          <div className="space-y-1.5">
-            {artifacts.map(a => (
-              <div key={a.path} className="flex items-center justify-between p-2.5 bg-slate-50 rounded-lg text-sm">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-slate-400">📄</span>
-                  <span className="text-slate-700 truncate">{a.path.split('/').pop()}</span>
-                  <span className="text-slate-400 text-xs shrink-0">{formatBytes(a.size_bytes)}</span>
-                </div>
-                <div className="flex gap-2 shrink-0">
-                  <a
-                    href={`/api/tasks/${taskId}/artifacts/${a.path}`}
-                    download
-                    className="p-1.5 rounded-lg hover:bg-slate-200 text-slate-500 hover:text-slate-700 transition-colors"
-                    title={t.taskDetail.stageDetails.download}
-                  >
-                    <Download size={13} />
-                  </a>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {stage.status === 'succeeded' && (
-        <div>
-          <button
-            onClick={loadManifest}
-            className="text-sm text-blue-600 hover:underline flex items-center gap-1.5"
-          >
-            <Eye size={13} />
-            {t.taskDetail.stageDetails.viewManifest}
-          </button>
-          {showManifest && manifest !== null && (
-            <div className="mt-3 p-4 bg-slate-900 rounded-xl text-xs font-mono text-slate-300 overflow-auto max-h-60">
-              <pre>{manifest}</pre>
-            </div>
-          )}
-        </div>
-      )}
+    <div className="flex gap-3">
+      <span className="w-28 shrink-0 text-slate-400">{label}</span>
+      <span className="font-medium text-slate-700">{value}</span>
     </div>
   )
 }

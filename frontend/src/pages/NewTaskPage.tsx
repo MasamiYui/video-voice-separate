@@ -5,16 +5,22 @@ import { ChevronRight, ChevronLeft, Loader2 } from 'lucide-react'
 import { tasksApi } from '../api/tasks'
 import { configApi, systemApi } from '../api/config'
 import { PageContainer } from '../components/layout/PageContainer'
+import { PipelineGraph } from '../components/pipeline/PipelineGraph'
+import { buildTemplatePreviewGraph } from '../lib/workflowPreview'
 import type { CreateTaskRequest, TaskConfig } from '../types'
 import { LANGUAGE_CODES, STAGE_ORDER } from '../i18n/formatters'
 import { useI18n } from '../i18n/useI18n'
 
 const defaultConfig: Partial<TaskConfig> = {
   device: 'auto',
+  template: 'asr-dub-basic',
   run_from_stage: 'stage1',
   run_to_stage: 'task-e',
   use_cache: true,
   keep_intermediate: false,
+  video_source: 'original',
+  audio_source: 'both',
+  subtitle_source: 'asr',
   separation_mode: 'auto',
   separation_quality: 'balanced',
   music_backend: 'demucs',
@@ -142,10 +148,17 @@ export function NewTaskPage() {
     value: stage,
     label: getStageShortLabel(stage),
   }))
+  const templateOptions = [
+    { value: 'asr-dub-basic', label: t.workflow.templates['asr-dub-basic'] },
+    { value: 'asr-dub+ocr-subs', label: t.workflow.templates['asr-dub+ocr-subs'] },
+    { value: 'asr-dub+ocr-subs+erase', label: t.workflow.templates['asr-dub+ocr-subs+erase'] },
+  ]
   const languageOptions = LANGUAGE_CODES.map(code => ({
     value: code,
     label: `${getLanguageLabel(code)} (${code})`,
   }))
+  const templateId = normalizeTemplateId(config.template)
+  const previewGraph = buildTemplatePreviewGraph(templateId)
 
   const { data: presets } = useQuery({
     queryKey: ['presets'],
@@ -258,6 +271,59 @@ export function NewTaskPage() {
 
   const step2 = (
     <div className="space-y-4">
+      <SectionCard title={t.newTask.fields.template}>
+        <div className="grid grid-cols-2 gap-4">
+          <Field label={t.newTask.fields.template} hint={t.newTask.hints.template}>
+            <Select
+              value={templateId}
+              onChange={value => patchConfig({ template: normalizeTemplateId(value) })}
+              options={templateOptions}
+            />
+          </Field>
+          <Field label={t.newTask.fields.subtitleSource}>
+            <Select
+              value={config.subtitle_source ?? 'asr'}
+              onChange={value => patchConfig({ subtitle_source: value as TaskConfig['subtitle_source'] })}
+              options={[
+                { value: 'none', label: t.newTask.options.subtitleSource.none },
+                { value: 'asr', label: t.newTask.options.subtitleSource.asr },
+                { value: 'ocr', label: t.newTask.options.subtitleSource.ocr },
+                { value: 'both', label: t.newTask.options.subtitleSource.both },
+              ]}
+            />
+          </Field>
+          <Field label={t.newTask.fields.videoSource}>
+            <Select
+              value={config.video_source ?? 'original'}
+              onChange={value => patchConfig({ video_source: value as TaskConfig['video_source'] })}
+              options={[
+                { value: 'original', label: t.newTask.options.videoSource.original },
+                { value: 'clean', label: t.newTask.options.videoSource.clean },
+                { value: 'clean_if_available', label: t.newTask.options.videoSource.clean_if_available },
+              ]}
+            />
+          </Field>
+          <Field label={t.newTask.fields.audioSource}>
+            <Select
+              value={config.audio_source ?? 'both'}
+              onChange={value => patchConfig({ audio_source: value as TaskConfig['audio_source'] })}
+              options={[
+                { value: 'dub', label: t.newTask.options.audioSource.dub },
+                { value: 'preview', label: t.newTask.options.audioSource.preview },
+                { value: 'both', label: t.newTask.options.audioSource.both },
+              ]}
+            />
+          </Field>
+        </div>
+
+        <div className="mt-4 rounded-[26px] bg-slate-50 p-4">
+          <div className="mb-3 text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
+            {t.workflow.previewTitle}
+          </div>
+          <PipelineGraph graph={previewGraph} templateId={templateId} compact showLegend />
+        </div>
+      </SectionCard>
+
       <div className="grid grid-cols-2 gap-4">
         <Field label={t.newTask.fields.fromStage}>
           <Select
@@ -431,6 +497,11 @@ export function NewTaskPage() {
           label={t.newTask.summary.direction}
           value={`${getLanguageLabel(sourceLang)} → ${getLanguageLabel(targetLang)}`}
         />
+        <ConfirmRow label={t.newTask.summary.template} value={t.workflow.templates[templateId]} />
+        <ConfirmRow
+          label={t.newTask.summary.deliveryPolicy}
+          value={[config.video_source, config.audio_source, config.subtitle_source].filter(Boolean).join(' · ') || t.common.notAvailable}
+        />
         <ConfirmRow
           label={t.newTask.summary.stageRange}
           value={`${getStageShortLabel((config.run_from_stage ?? 'stage1') as typeof STAGE_ORDER[number])} → ${getStageShortLabel((config.run_to_stage ?? 'task-e') as typeof STAGE_ORDER[number])}`}
@@ -526,4 +597,15 @@ export function NewTaskPage() {
       </div>
     </PageContainer>
   )
+}
+
+function normalizeTemplateId(value: unknown): TaskConfig['template'] {
+  if (
+    value === 'asr-dub-basic' ||
+    value === 'asr-dub+ocr-subs' ||
+    value === 'asr-dub+ocr-subs+erase'
+  ) {
+    return value
+  }
+  return 'asr-dub-basic'
 }

@@ -42,7 +42,12 @@ function ActiveTaskCard({ task }: { task: Task }) {
         </div>
       </div>
       <ProgressBar value={task.overall_progress} size="sm" className="mb-3" />
-      <PipelineGraph stages={task.stages} activeStage={task.current_stage ?? undefined} />
+      <PipelineGraph
+        stages={task.stages}
+        templateId={(typeof task.config.template === 'string' ? task.config.template : 'asr-dub-basic') as 'asr-dub-basic' | 'asr-dub+ocr-subs' | 'asr-dub+ocr-subs+erase'}
+        activeStage={task.current_stage ?? undefined}
+        compact
+      />
     </Link>
   )
 }

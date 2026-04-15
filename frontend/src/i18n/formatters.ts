@@ -1,6 +1,17 @@
 import { messages, type Locale, type LocaleMessages } from './messages'
 
-export const STAGE_ORDER = ['stage1', 'task-a', 'task-b', 'task-c', 'task-d', 'task-e', 'task-g'] as const
+export const STAGE_ORDER = [
+  'stage1',
+  'ocr-detect',
+  'task-a',
+  'task-b',
+  'task-c',
+  'ocr-translate',
+  'task-d',
+  'task-e',
+  'subtitle-erase',
+  'task-g',
+] as const
 export const LANGUAGE_CODES = ['zh', 'en', 'ja', 'ko', 'de', 'fr', 'es', 'ru'] as const
 
 export type StageKey = keyof LocaleMessages['stages']

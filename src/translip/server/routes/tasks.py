@@ -235,11 +235,14 @@ def get_stage_manifest(task_id: str, stage_name: str, session: Session = Depends
 
     stage_map = {
         "stage1": f"stage1/{input_stem}/manifest.json",
+        "ocr-detect": "ocr-detect/ocr-detect-manifest.json",
         "task-a": "task-a/voice/task-a-manifest.json",
         "task-b": "task-b/voice/task-b-manifest.json",
         "task-c": "task-c/voice/task-c-manifest.json",
+        "ocr-translate": "ocr-translate/ocr-translate-manifest.json",
         "task-d": "task-d/task-d-stage-manifest.json",
         "task-e": "task-e/voice/task-e-manifest.json",
+        "subtitle-erase": "subtitle-erase/subtitle-erase-manifest.json",
         "task-g": "task-g/delivery-manifest.json",
     }
     filename = stage_map.get(stage_name)

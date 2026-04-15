@@ -1,83 +1,35 @@
-import { cn } from '../../lib/utils'
-import type { TaskStage } from '../../types'
-import { type StageKey, type StageShortKey } from '../../i18n/formatters'
-import { useI18n } from '../../i18n/useI18n'
-
-const STATUS_NODE_STYLE: Record<string, string> = {
-  pending: 'border-2 border-dashed border-slate-300 bg-white text-slate-400',
-  running: 'border-2 border-blue-500 bg-blue-50 text-blue-700',
-  succeeded: 'border-2 border-emerald-400 bg-emerald-50 text-emerald-700',
-  cached: 'border-2 border-violet-400 bg-violet-50 text-violet-700',
-  failed: 'border-2 border-red-400 bg-red-50 text-red-700',
-  skipped: 'border-2 border-amber-400 bg-amber-50 text-amber-700',
-}
+import { buildGraphFromStages } from '../../lib/workflowPreview'
+import type { TaskConfig, TaskStage, WorkflowGraph as WorkflowGraphPayload } from '../../types'
+import { WorkflowGraph } from '../workflow/WorkflowGraph'
 
 interface PipelineGraphProps {
-  stages: TaskStage[]
+  stages?: TaskStage[]
+  graph?: WorkflowGraphPayload
   activeStage?: string
   onStageClick?: (stageName: string) => void
+  compact?: boolean
+  showLegend?: boolean
+  templateId?: TaskConfig['template']
 }
 
-export function PipelineGraph({ stages, activeStage, onStageClick }: PipelineGraphProps) {
-  const { getStageLabel, getStageShortLabel, t } = useI18n()
-  const stageMap = new Map(stages.map(s => [s.stage_name, s]))
-
-  const rows = [
-    ['stage1', 'task-a', 'task-b', 'task-c'],
-    ['task-d', 'task-e', 'task-g'],
-  ]
+export function PipelineGraph({
+  stages = [],
+  graph,
+  activeStage,
+  onStageClick,
+  compact = false,
+  showLegend = false,
+  templateId = 'asr-dub-basic',
+}: PipelineGraphProps) {
+  const resolvedGraph = graph ?? buildGraphFromStages(stages, templateId)
 
   return (
-    <div className="space-y-3">
-      {rows.map((row, rowIdx) => (
-        <div key={rowIdx} className="flex items-center gap-2 flex-wrap">
-          {row.map((stageName, i) => {
-            const stage = stageMap.get(stageName)
-            const status = stage?.status ?? 'pending'
-            const isActive = stageName === activeStage
-            const shortName = getStageShortLabel(stageName as StageShortKey)
-            const pct = stage?.progress_percent ?? 0
-
-            return (
-              <div key={stageName} className="flex items-center gap-2">
-                <button
-                  onClick={() => onStageClick?.(stageName)}
-                  title={getStageLabel(stageName as StageKey)}
-                  className={cn(
-                    'relative rounded-xl px-3 py-2 min-w-[90px] text-center transition-all cursor-pointer',
-                    STATUS_NODE_STYLE[status],
-                    isActive && 'ring-2 ring-blue-400 ring-offset-1',
-                  )}
-                >
-                  <div className="text-xs font-semibold">{shortName}</div>
-                  {status === 'running' && (
-                    <div className="text-xs mt-0.5">{pct.toFixed(0)}%</div>
-                  )}
-                  {status === 'succeeded' && (
-                    <div className="text-xs mt-0.5">✓</div>
-                  )}
-                  {status === 'cached' && (
-                    <div className="text-xs mt-0.5">{t.pipeline.cached}</div>
-                  )}
-                  {status === 'failed' && (
-                    <div className="text-xs mt-0.5">✕</div>
-                  )}
-                  {status === 'pending' && (
-                    <div className="text-xs mt-0.5">{t.pipeline.pending}</div>
-                  )}
-                  {status === 'running' && isActive && (
-                    <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-blue-500 rounded-full animate-pulse" />
-                  )}
-                </button>
-                {i < row.length - 1 && (
-                  <span className="text-slate-300 text-sm">→</span>
-                )}
-              </div>
-            )
-          })}
-          {rowIdx === 0 && <span className="text-slate-300 text-sm">→</span>}
-        </div>
-      ))}
-    </div>
+    <WorkflowGraph
+      graph={resolvedGraph}
+      selectedNodeId={activeStage}
+      onNodeSelect={onStageClick}
+      compact={compact}
+      showLegend={showLegend}
+    />
   )
 }

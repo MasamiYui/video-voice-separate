@@ -39,3 +39,24 @@ body {
 .json-number { color: #92400e; }
 .json-boolean { color: #7c2d12; }
 .json-null { color: #6b7280; }
+
+@keyframes workflow-edge-dash {
+  to {
+    stroke-dashoffset: -28;
+  }
+}
+
+.workflow-edge-active {
+  stroke-dasharray: 10 10;
+  animation: workflow-edge-dash 1.15s linear infinite;
+}
+
+.workflow-edge-reduced {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workflow-edge-active {
+    animation: none;
+  }
+}

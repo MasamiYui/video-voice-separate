@@ -1,5 +1,5 @@
 import api from './client'
-import type { CreateTaskRequest, Task, TaskListResponse } from '../types'
+import type { CreateTaskRequest, Task, TaskListResponse, WorkflowGraph } from '../types'
 
 export const tasksApi = {
   list: (params?: {
@@ -11,6 +11,9 @@ export const tasksApi = {
   }) => api.get<TaskListResponse>('/api/tasks', { params }).then(r => r.data),
 
   get: (id: string) => api.get<Task>(`/api/tasks/${id}`).then(r => r.data),
+
+  getGraph: (id: string) =>
+    api.get<WorkflowGraph>(`/api/tasks/${id}/graph`).then(r => r.data),
 
   create: (req: CreateTaskRequest) =>
     api.post<Task>('/api/tasks', req).then(r => r.data),

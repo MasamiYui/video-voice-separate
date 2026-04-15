@@ -1,5 +1,8 @@
-export type TaskStatus = 'pending' | 'running' | 'succeeded' | 'failed'
+export type TaskStatus = 'pending' | 'running' | 'succeeded' | 'partial_success' | 'failed'
 export type StageStatus = 'pending' | 'running' | 'succeeded' | 'cached' | 'failed' | 'skipped'
+export type WorkflowStatus = TaskStatus
+export type WorkflowEdgeState = 'inactive' | 'active' | 'completed' | 'blocked'
+export type WorkflowNodeGroup = 'audio-spine' | 'ocr-subtitles' | 'video-cleanup' | 'delivery'
 
 export interface TaskStage {
   stage_name: string
@@ -45,10 +48,14 @@ export interface TaskListResponse {
 
 export interface TaskConfig {
   device: string
+  template: 'asr-dub-basic' | 'asr-dub+ocr-subs' | 'asr-dub+ocr-subs+erase'
   run_from_stage: string
   run_to_stage: string
   use_cache: boolean
   keep_intermediate: boolean
+  video_source: 'original' | 'clean' | 'clean_if_available'
+  audio_source: 'dub' | 'preview' | 'both'
+  subtitle_source: 'none' | 'asr' | 'ocr' | 'both'
   separation_mode: string
   separation_quality: string
   music_backend: string
@@ -73,6 +80,8 @@ export interface TaskConfig {
   delivery_container: string
   delivery_video_codec: string
   delivery_audio_codec: string
+  ocr_project_root?: string
+  erase_project_root?: string
 }
 
 export interface CreateTaskRequest {
@@ -119,4 +128,34 @@ export interface ProgressEvent {
   status?: string
   stages?: TaskStage[]
   message?: string
+}
+
+export interface WorkflowGraphNode {
+  id: string
+  label: string
+  group: WorkflowNodeGroup
+  required: boolean
+  status: StageStatus
+  progress_percent: number
+  manifest_path?: string | null
+  log_path?: string | null
+  error_message?: string | null
+  current_step?: string
+  cache_hit?: boolean
+  elapsed_sec?: number
+}
+
+export interface WorkflowGraphEdge {
+  from: string
+  to: string
+  state: WorkflowEdgeState
+}
+
+export interface WorkflowGraph {
+  workflow: {
+    template_id: TaskConfig['template']
+    status: WorkflowStatus
+  }
+  nodes: WorkflowGraphNode[]
+  edges: WorkflowGraphEdge[]
 }

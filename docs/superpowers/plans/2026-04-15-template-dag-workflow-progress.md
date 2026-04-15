@@ -67,6 +67,42 @@
   - clean video from `subtitle-erase`
 - Verified real subtitle erasure output on sample media and confirmed the rendered frame no longer contains the original hard subtitle.
 
+### Milestone 5
+
+- Added frontend workflow graph data layer:
+  - `frontend/src/types/index.ts`
+  - `frontend/src/api/tasks.ts`
+  - `frontend/src/stores/workflowGraphStore.ts`
+  - `frontend/src/hooks/useWorkflowGraph.ts`
+  - `frontend/src/hooks/useWorkflowRuntimeUpdates.ts`
+- Added frontend workflow graph component family:
+  - `frontend/src/components/workflow/WorkflowGraph.tsx`
+  - `frontend/src/components/workflow/WorkflowLane.tsx`
+  - `frontend/src/components/workflow/WorkflowNodeCard.tsx`
+  - `frontend/src/components/workflow/WorkflowEdge.tsx`
+  - `frontend/src/components/workflow/WorkflowLegend.tsx`
+  - `frontend/src/components/workflow/WorkflowNodeDrawer.tsx`
+- Replaced the old linear `PipelineGraph` implementation with a compatibility wrapper over the new graph system.
+- Extended i18n and shared status handling for:
+  - `partial_success`
+  - `ocr-detect`
+  - `ocr-translate`
+  - `subtitle-erase`
+
+### Milestone 6
+
+- Upgraded `TaskDetailPage` to be graph-first:
+  - runtime execution graph
+  - node selection
+  - drill-down drawer
+  - artifact and manifest inspection
+- Upgraded `NewTaskPage` to show:
+  - template selector
+  - delivery policy selectors
+  - template preview graph
+- Updated `DashboardPage` to use the new graph wrapper in compact mode.
+- Fixed backend SPA routing so built frontend routes such as `/tasks/:id` and `/tasks/new` no longer return 404 when served from FastAPI.
+
 ## Smoke Findings
 
 - OCR detection succeeded on a real sample clip from `test_video/我在迪拜等你.mp4`.
@@ -113,6 +149,10 @@ uv run pytest -q tests/test_server_graph.py
 uv run pytest -q tests/test_orchestration.py tests/test_cli.py tests/test_delivery.py tests/test_server_graph.py tests/test_server_app.py
 uv run pytest -q tests/test_orchestration.py::test_translate_ocr_events_writes_json_and_srt tests/test_delivery.py::test_resolve_delivery_inputs_prefers_clean_video_when_available tests/test_delivery.py::test_resolve_delivery_inputs_falls_back_to_original_video
 uv run pytest -q tests/test_workflow_graph.py tests/test_cli.py tests/test_orchestration.py tests/test_delivery.py tests/test_server_graph.py tests/test_server_app.py
+cd frontend && npm test -- --run src/hooks/__tests__/useWorkflowRuntimeUpdates.test.tsx src/components/workflow/__tests__/WorkflowGraph.test.tsx src/components/workflow/__tests__/WorkflowNodeDrawer.test.tsx
+cd frontend && npm run build
+uv run pytest -q tests/test_server_app.py tests/test_server_graph.py
+cd frontend && npm test -- --run
 ```
 
 ## Current Status
@@ -122,7 +162,7 @@ uv run pytest -q tests/test_workflow_graph.py tests/test_cli.py tests/test_orche
 - Workflow graph payload and route: complete
 - OCR detect / OCR translate bridge: complete
 - Subtitle erasure bridge: complete
-- Frontend workflow graph: not started
+- Frontend workflow graph: complete
 
 ## Smoke Commands
 
@@ -159,11 +199,32 @@ run_subtitle_erase(request, log_path=request.output_root / 'logs' / 'subtitle-er
 PY
 ```
 
+## Browser Verification
+
+The following browser checks were performed against a local FastAPI server serving the built frontend on `http://127.0.0.1:8766`:
+
+- Opened `/tasks/smoke-workflow-120`
+  - confirmed runtime execution graph rendered
+  - confirmed runtime drawer rendered node details for `subtitle-erase`
+  - confirmed artifacts list showed the clean video output
+  - confirmed `查看节点 Manifest` loaded the node manifest successfully
+- Opened `/tasks/new`
+  - advanced to step 2 using the smoke clip path
+  - confirmed template selector rendered
+  - confirmed delivery policy controls rendered
+  - confirmed template preview graph rendered
+
+## Additional Fixes
+
+- Added FastAPI SPA fallback for frontend routes:
+  - direct navigation to `/tasks/:id`
+  - direct navigation to `/tasks/new`
+  now returns `frontend/dist/index.html` instead of `404 Not Found`
+
 ## Next Focus
 
-Move to frontend execution graph work:
+Remaining follow-up items are now optimization-oriented rather than feature-blocking:
 
-1. Implement static workflow subgraph rendering in the frontend
-2. Add runtime node-state animation and SSE-driven graph updates
-3. Add drill-down drawer for node details, logs, and produced artifacts
-4. Run frontend verification against live task graph payloads
+1. Reduce frontend bundle size; current build completes, but the main JS chunk is still above 500 kB.
+2. Add richer live task samples so browser verification can exercise `running` animation and SSE-driven node updates, not only completed smoke artifacts.
+3. Consider a future dedicated template-preview payload from the backend if local preview fixtures drift from backend template definitions.

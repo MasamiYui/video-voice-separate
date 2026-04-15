@@ -114,3 +114,50 @@ def test_task_graph_endpoint_returns_nodes_and_edges(tmp_path: Path) -> None:
     assert payload["workflow"]["template_id"] == "asr-dub+ocr-subs"
     assert payload["nodes"][2]["id"] == "task-a"
     assert payload["edges"][0]["to"] == "task-a"
+
+
+def test_stage_manifest_endpoint_supports_ocr_nodes(tmp_path: Path) -> None:
+    db_path = tmp_path / "graph.db"
+    engine = create_engine(
+        f"sqlite:///{db_path}",
+        connect_args={"check_same_thread": False},
+    )
+    SQLModel.metadata.create_all(engine)
+
+    task_id = "task-graph-ocr"
+    output_root = tmp_path / task_id
+    output_root.mkdir(parents=True)
+    manifest_path = output_root / "ocr-detect" / "ocr-detect-manifest.json"
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(json.dumps({"status": "succeeded"}), encoding="utf-8")
+
+    with Session(engine) as session:
+        session.add(
+            Task(
+                id=task_id,
+                name="Graph OCR Task",
+                status="succeeded",
+                input_path=str(tmp_path / "input.mp4"),
+                output_root=str(output_root),
+                source_lang="zh",
+                target_lang="en",
+                config={},
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
+            )
+        )
+        session.commit()
+
+    def override_session():
+        with Session(engine) as session:
+            yield session
+
+    app.dependency_overrides[get_session] = override_session
+    try:
+        client = TestClient(app)
+        response = client.get(f"/api/tasks/{task_id}/stages/ocr-detect/manifest")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "succeeded"
