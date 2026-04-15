@@ -1,4 +1,5 @@
 import { Download, FileText } from 'lucide-react'
+import { useI18n } from '../../i18n/useI18n'
 import { CrossToolAction } from './CrossToolAction'
 import type { AtomicToolPrefill } from '../../lib/atomicToolPrefill'
 import type { ArtifactInfo, AtomicJob } from '../../types/atomic-tools'
@@ -11,6 +12,7 @@ interface ResultPanelProps {
 }
 
 export function ResultPanel({ toolId, job, artifacts, getDownloadUrl }: ResultPanelProps) {
+  const { t } = useI18n()
   if (!job) return null
 
   const translatedText =
@@ -19,7 +21,7 @@ export function ResultPanel({ toolId, job, artifacts, getDownloadUrl }: ResultPa
   return (
     <section className="space-y-4 rounded-3xl border border-slate-200 bg-white p-5">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-slate-900">结果</h3>
+        <h3 className="text-lg font-semibold text-slate-900">{t.atomicTools.result.title}</h3>
         <div className="text-xs uppercase tracking-[0.2em] text-slate-400">{job.status}</div>
       </div>
 
@@ -35,12 +37,12 @@ export function ResultPanel({ toolId, job, artifacts, getDownloadUrl }: ResultPa
         <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
           <div className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-700">
             <FileText size={16} />
-            翻译文本
+            {t.atomicTools.result.translatedText}
           </div>
           <p className="whitespace-pre-wrap text-sm leading-6 text-slate-600">{translatedText}</p>
           <div className="mt-3">
             <CrossToolAction
-              label="用于语音合成"
+              label={t.atomicTools.result.toTts}
               targetToolId="tts"
               payload={{ text: translatedText }}
             />
@@ -61,7 +63,7 @@ export function ResultPanel({ toolId, job, artifacts, getDownloadUrl }: ResultPa
                 className="inline-flex items-center gap-1 text-sm font-medium text-blue-600"
               >
                 <Download size={16} />
-                下载
+                {t.atomicTools.actions.download}
               </a>
             </div>
 
@@ -74,7 +76,7 @@ export function ResultPanel({ toolId, job, artifacts, getDownloadUrl }: ResultPa
             )}
 
             <div className="mt-3 flex flex-wrap gap-2">
-              {buildArtifactActions(toolId, artifact, translatedText).map(action => (
+              {buildArtifactActions(toolId, artifact, translatedText, t.atomicTools.result).map(action => (
                 <CrossToolAction
                   key={`${artifact.filename}-${action.targetToolId}-${action.label}`}
                   label={action.label}
@@ -98,44 +100,69 @@ function isVideoFile(filename: string, contentType: string) {
   return contentType.startsWith('video/') || /\.(mp4|mov|mkv|webm)$/i.test(filename)
 }
 
-function buildArtifactActions(toolId: string, artifact: ArtifactInfo, translatedText: string | null) {
+function buildArtifactActions(
+  toolId: string,
+  artifact: ArtifactInfo,
+  translatedText: string | null,
+  labels: {
+    toTts: string
+    toTranscription: string
+    toMixing: string
+    toTranslation: string
+    toMuxing: string
+  },
+) {
   const fileId = artifact.file_id ?? undefined
   if (!fileId) return []
 
   if (toolId === 'separation' && /^voice\./i.test(artifact.filename)) {
     return [
-      buildArtifactAction('转到语音转文字', 'transcription', { files: { file: { file_id: fileId, filename: artifact.filename } } }),
-      buildArtifactAction('转到音频混合', 'mixing', { files: { voice_file: { file_id: fileId, filename: artifact.filename } } }),
+      buildArtifactAction(labels.toTranscription, 'transcription', {
+        files: { file: { file_id: fileId, filename: artifact.filename } },
+      }),
+      buildArtifactAction(labels.toMixing, 'mixing', {
+        files: { voice_file: { file_id: fileId, filename: artifact.filename } },
+      }),
     ]
   }
 
   if (toolId === 'separation' && /^background\./i.test(artifact.filename)) {
     return [
-      buildArtifactAction('转到音频混合', 'mixing', { files: { background_file: { file_id: fileId, filename: artifact.filename } } }),
+      buildArtifactAction(labels.toMixing, 'mixing', {
+        files: { background_file: { file_id: fileId, filename: artifact.filename } },
+      }),
     ]
   }
 
   if (toolId === 'transcription') {
     return [
-      buildArtifactAction('转到文本翻译', 'translation', { files: { file: { file_id: fileId, filename: artifact.filename } } }),
+      buildArtifactAction(labels.toTranslation, 'translation', {
+        files: { file: { file_id: fileId, filename: artifact.filename } },
+      }),
     ]
   }
 
   if (toolId === 'tts') {
     return [
-      buildArtifactAction('转到音频混合', 'mixing', { files: { voice_file: { file_id: fileId, filename: artifact.filename } } }),
-      buildArtifactAction('转到音视频合并', 'muxing', { files: { audio_file: { file_id: fileId, filename: artifact.filename } } }),
+      buildArtifactAction(labels.toMixing, 'mixing', {
+        files: { voice_file: { file_id: fileId, filename: artifact.filename } },
+      }),
+      buildArtifactAction(labels.toMuxing, 'muxing', {
+        files: { audio_file: { file_id: fileId, filename: artifact.filename } },
+      }),
     ]
   }
 
   if (toolId === 'mixing') {
     return [
-      buildArtifactAction('转到音视频合并', 'muxing', { files: { audio_file: { file_id: fileId, filename: artifact.filename } } }),
+      buildArtifactAction(labels.toMuxing, 'muxing', {
+        files: { audio_file: { file_id: fileId, filename: artifact.filename } },
+      }),
     ]
   }
 
   if (toolId === 'translation' && translatedText) {
-    return [buildArtifactAction('用于语音合成', 'tts', { text: translatedText })]
+    return [buildArtifactAction(labels.toTts, 'tts', { text: translatedText })]
   }
 
   return []

@@ -36,9 +36,9 @@ def test_job_manager_executes_job_and_registers_artifacts(tmp_path: Path) -> Non
     upload = asyncio.run(
         manager.save_upload(
             UploadFile(
-                filename="sample.txt",
+                filename="sample.wav",
                 file=io.BytesIO(b"hello atomic tools"),
-                headers={"content-type": "text/plain"},
+                headers={"content-type": "audio/wav"},
             )
         )
     )
@@ -53,7 +53,7 @@ def test_job_manager_executes_job_and_registers_artifacts(tmp_path: Path) -> Non
     assert stored_job.progress_percent == 100.0
     assert stored_job.result == {
         "echo_file": "result.txt",
-        "input_name": "sample.txt",
+        "input_name": "sample.wav",
     }
     assert len(artifacts) == 1
     assert artifacts[0].filename == "result.txt"
@@ -72,9 +72,9 @@ def test_job_manager_marks_job_failed_when_adapter_raises(tmp_path: Path) -> Non
     upload = asyncio.run(
         manager.save_upload(
             UploadFile(
-                filename="sample.txt",
+                filename="sample.wav",
                 file=io.BytesIO(b"broken"),
-                headers={"content-type": "text/plain"},
+                headers={"content-type": "audio/wav"},
             )
         )
     )
@@ -85,3 +85,43 @@ def test_job_manager_marks_job_failed_when_adapter_raises(tmp_path: Path) -> Non
     stored_job = manager.get_job(job.job_id)
     assert stored_job.status == "failed"
     assert stored_job.error_message == "adapter boom"
+
+
+def test_job_manager_rejects_unknown_file_references(tmp_path: Path) -> None:
+    from translip.server.atomic_tools.job_manager import JobManager
+
+    manager = JobManager(root=tmp_path / "atomic-tools")
+    manager.register_adapter("probe", FakeAdapter())
+
+    try:
+        manager.create_job("probe", {"file_id": "missing-file"})
+    except ValueError as exc:
+        assert "Unknown file reference" in str(exc)
+    else:
+        raise AssertionError("expected create_job() to reject an unknown file reference")
+
+
+def test_job_manager_counts_pending_jobs_against_concurrency_limit(tmp_path: Path) -> None:
+    from translip.server.atomic_tools.job_manager import JobManager
+
+    manager = JobManager(root=tmp_path / "atomic-tools", max_concurrent_jobs=1)
+    manager.register_adapter("probe", FakeAdapter())
+
+    upload = asyncio.run(
+        manager.save_upload(
+            UploadFile(
+                filename="sample.wav",
+                file=io.BytesIO(b"hello atomic tools"),
+                headers={"content-type": "audio/wav"},
+            )
+        )
+    )
+
+    manager.create_job("probe", {"file_id": upload.file_id})
+
+    try:
+        manager.create_job("probe", {"file_id": upload.file_id})
+    except RuntimeError as exc:
+        assert "Too many atomic tool jobs" in str(exc)
+    else:
+        raise AssertionError("expected create_job() to enforce the pending/running concurrency limit")

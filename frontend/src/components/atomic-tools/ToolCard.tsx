@@ -1,5 +1,6 @@
 import { ArrowRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { useI18n } from '../../i18n/useI18n'
 import type { ToolInfo } from '../../types/atomic-tools'
 
 interface ToolCardProps {
@@ -10,6 +11,8 @@ interface ToolCardProps {
 }
 
 export function ToolCard({ tool, title, description, categoryLabel }: ToolCardProps) {
+  const { t } = useI18n()
+
   return (
     <Link
       to={`/tools/${tool.tool_id}`}
@@ -21,7 +24,7 @@ export function ToolCard({ tool, title, description, categoryLabel }: ToolCardPr
       <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
       <p className="mt-2 text-sm leading-6 text-slate-600">{description}</p>
       <div className="mt-5 inline-flex items-center gap-2 text-sm font-medium text-blue-600">
-        使用工具
+        {t.atomicTools.actions.useTool}
         <ArrowRight size={16} className="transition group-hover:translate-x-1" />
       </div>
     </Link>

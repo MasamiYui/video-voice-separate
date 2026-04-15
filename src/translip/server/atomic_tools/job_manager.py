@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import mimetypes
 import shutil
 from dataclasses import dataclass
@@ -65,11 +66,12 @@ class JobManager:
         )
 
     def create_job(self, tool_id: str, params: dict) -> JobResponse:
-        get_tool_spec(tool_id)
-        if self._running_job_count() >= self.max_concurrent_jobs:
+        spec = get_tool_spec(tool_id)
+        if self._active_job_count() >= self.max_concurrent_jobs:
             raise RuntimeError("Too many atomic tool jobs are already running")
         adapter = self._get_adapter(tool_id)
         normalized = adapter.validate_params(params)
+        self._validate_file_references(spec.accept_formats, spec.max_file_size_mb, normalized)
         job_id = uuid4().hex
         job = JobResponse(
             job_id=job_id,
@@ -84,6 +86,9 @@ class JobManager:
         return job
 
     async def execute_job(self, job_id: str) -> None:
+        await asyncio.to_thread(self._execute_job_sync, job_id)
+
+    def _execute_job_sync(self, job_id: str) -> None:
         job = self._jobs[job_id]
         params = getattr(job, "_normalized_params")
         adapter = self._get_adapter(job.tool_id)
@@ -127,7 +132,11 @@ class JobManager:
     def get_job(self, job_id: str) -> JobResponse:
         return self._jobs[job_id]
 
+    def get_job_result(self, job_id: str) -> dict[str, Any] | None:
+        return self.get_job(job_id).result
+
     def list_artifacts(self, job_id: str) -> list[ArtifactInfo]:
+        self.get_job(job_id)
         return list(self._job_artifacts.get(job_id, []))
 
     def get_artifact_path(self, job_id: str, filename: str) -> Path | None:
@@ -159,8 +168,51 @@ class JobManager:
     def _get_adapter(self, tool_id: str):
         return self._adapter_overrides.get(tool_id) or create_adapter(tool_id)
 
-    def _running_job_count(self) -> int:
-        return sum(1 for job in self._jobs.values() if job.status == "running")
+    def _active_job_count(self) -> int:
+        return sum(1 for job in self._jobs.values() if job.status in {"pending", "running"})
+
+    def _validate_file_references(
+        self,
+        accepted_formats: list[str],
+        max_file_size_mb: int,
+        params: dict[str, Any],
+    ) -> None:
+        for key, value in params.items():
+            if key == "file_id" and isinstance(value, str):
+                self._validate_stored_file(value, accepted_formats, max_file_size_mb, param_name=key)
+            elif key.endswith("_file_id") and isinstance(value, str):
+                self._validate_stored_file(value, accepted_formats, max_file_size_mb, param_name=key)
+            elif key.endswith("_file_ids") and isinstance(value, list):
+                for index, file_id in enumerate(value):
+                    self._validate_stored_file(
+                        file_id,
+                        accepted_formats,
+                        max_file_size_mb,
+                        param_name=f"{key}[{index}]",
+                    )
+
+    def _validate_stored_file(
+        self,
+        file_id: str,
+        accepted_formats: list[str],
+        max_file_size_mb: int,
+        *,
+        param_name: str,
+    ) -> None:
+        stored = self._files.get(file_id)
+        if stored is None:
+            raise ValueError(f"Unknown file reference for {param_name}: {file_id}")
+        if stored.size_bytes > (max_file_size_mb * 1024 * 1024):
+            raise ValueError(
+                f"File '{stored.filename}' exceeds the {max_file_size_mb} MB limit for this tool"
+            )
+        suffix = Path(stored.filename).suffix.lower()
+        normalized_formats = {item.lower() for item in accepted_formats}
+        if suffix and normalized_formats and suffix not in normalized_formats:
+            raise ValueError(
+                f"File '{stored.filename}' is not supported for this tool. "
+                f"Accepted formats: {', '.join(sorted(normalized_formats))}"
+            )
 
     def _materialize_inputs(self, params: dict[str, Any], input_dir: Path) -> None:
         for key, value in params.items():
