@@ -13,10 +13,10 @@ function StatCard({ label, value, sub, color }: {
   label: string; value: number | string; sub?: string; color?: string
 }) {
   return (
-    <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 hover:-translate-y-0.5 transition-transform">
-      <div className="text-sm text-slate-500 font-medium">{label}</div>
-      <div className={`text-3xl font-bold mt-1 ${color ?? 'text-slate-900'}`}>{value}</div>
-      {sub && <div className="text-xs text-slate-400 mt-1">{sub}</div>}
+    <div className="border-r border-slate-100 px-5 py-4 last:border-r-0">
+      <div className="text-xs font-medium uppercase tracking-widest text-slate-400">{label}</div>
+      <div className={`mt-1 text-3xl font-bold tabular-nums ${color ?? 'text-slate-900'}`}>{value}</div>
+      {sub && <div className="mt-0.5 text-xs text-slate-400">{sub}</div>}
     </div>
   )
 }
@@ -27,27 +27,29 @@ function ActiveTaskCard({ task }: { task: Task }) {
   return (
     <Link
       to={`/tasks/${task.id}`}
-      className="block bg-white rounded-2xl p-5 shadow-sm border border-slate-100 hover:shadow-md transition-shadow"
+      className="block overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition-shadow hover:shadow-md"
     >
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
         <div>
           <div className="font-semibold text-slate-900">{task.name}</div>
-          <div className="text-xs text-slate-500 mt-0.5">
+          <div className="mt-0.5 text-xs text-slate-400">
             {getLanguageLabel(task.source_lang)} → {getLanguageLabel(task.target_lang)}
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold text-blue-600">{task.overall_progress.toFixed(0)}%</span>
+        <div className="flex items-center gap-2.5">
+          <span className="tabular-nums text-sm font-semibold text-slate-700">{task.overall_progress.toFixed(0)}%</span>
           <StatusBadge status={task.status} size="sm" />
         </div>
       </div>
-      <ProgressBar value={task.overall_progress} size="sm" className="mb-3" />
-      <PipelineGraph
-        stages={task.stages}
-        templateId={(typeof task.config.template === 'string' ? task.config.template : 'asr-dub-basic') as 'asr-dub-basic' | 'asr-dub+ocr-subs' | 'asr-dub+ocr-subs+erase'}
-        activeStage={task.current_stage ?? undefined}
-        compact
-      />
+      <div className="px-5 py-3">
+        <ProgressBar value={task.overall_progress} size="sm" className="mb-3" />
+        <PipelineGraph
+          stages={task.stages}
+          templateId={(typeof task.config.template === 'string' ? task.config.template : 'asr-dub-basic') as 'asr-dub-basic' | 'asr-dub+ocr-subs' | 'asr-dub+ocr-subs+erase'}
+          activeStage={task.current_stage ?? undefined}
+          compact
+        />
+      </div>
     </Link>
   )
 }
@@ -73,10 +75,10 @@ export function DashboardPage() {
   return (
     <PageContainer className="max-w-5xl space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-900">{t.dashboard.title}</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{t.dashboard.title}</h1>
         <Link
           to="/tasks/new"
-          className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors"
+          className="flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
         >
           <PlusCircle size={15} />
           {t.common.createTask}
@@ -84,11 +86,13 @@ export function DashboardPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard label={t.dashboard.totalTasks} value={total} />
-        <StatCard label={t.dashboard.running} value={running} color="text-blue-600" />
-        <StatCard label={t.dashboard.completed} value={succeeded} color="text-emerald-600" />
-        <StatCard label={t.dashboard.failed} value={failed} color="text-red-600" />
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="grid grid-cols-2 md:grid-cols-4">
+          <StatCard label={t.dashboard.totalTasks} value={total} />
+          <StatCard label={t.dashboard.running} value={running} color="text-blue-600" />
+          <StatCard label={t.dashboard.completed} value={succeeded} color="text-emerald-600" />
+          <StatCard label={t.dashboard.failed} value={failed} color="text-red-600" />
+        </div>
       </div>
 
       {/* Active tasks */}
@@ -96,7 +100,7 @@ export function DashboardPage() {
         <section>
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-base font-semibold text-slate-800">{t.dashboard.activeTasks}</h2>
-            <Link to="/tasks" className="text-sm text-blue-600 hover:underline flex items-center gap-1">
+            <Link to="/tasks" className="flex items-center gap-1 text-sm text-blue-600 hover:underline">
               {t.common.all} <ArrowRight size={12} />
             </Link>
           </div>
@@ -110,7 +114,7 @@ export function DashboardPage() {
       {recentDone.length > 0 && (
         <section>
           <h2 className="text-base font-semibold text-slate-800 mb-3">{t.dashboard.recentCompleted}</h2>
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-100 text-left">
@@ -150,7 +154,7 @@ export function DashboardPage() {
           <div className="text-sm mt-1 mb-6">{t.dashboard.emptyDescription}</div>
           <Link
             to="/tasks/new"
-            className="inline-flex items-center gap-2 bg-blue-600 text-white px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors"
+            className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-700"
           >
             <PlusCircle size={15} />
             {t.common.createTask}

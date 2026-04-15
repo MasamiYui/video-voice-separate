@@ -70,7 +70,7 @@ export function TaskListPage() {
         <h1 className="text-2xl font-bold text-slate-900">{t.tasks.title}</h1>
         <Link
           to="/tasks/new"
-          className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors"
+          className="flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
         >
           <PlusCircle size={15} />
           {t.common.createTask}
@@ -85,7 +85,7 @@ export function TaskListPage() {
             value={search}
             onChange={e => { setSearch(e.target.value); setPage(1) }}
             placeholder={t.tasks.searchPlaceholder}
-            className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400"
+            className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-md bg-white focus:outline-none focus:ring-1 focus:ring-slate-300"
           />
         </div>
         <div className="flex gap-2">
@@ -93,7 +93,7 @@ export function TaskListPage() {
             <button
               key={opt.value}
               onClick={() => { setStatusFilter(opt.value); setPage(1) }}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
                 statusFilter === opt.value
                   ? 'bg-blue-600 text-white'
                   : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
@@ -106,7 +106,7 @@ export function TaskListPage() {
         {selected.size > 0 && (
           <button
             onClick={handleBulkDelete}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition-colors"
+            className="flex items-center gap-1.5 rounded-md border border-rose-200 bg-rose-50 px-3 py-1.5 text-sm font-medium text-rose-600 transition-colors hover:bg-rose-100"
           >
             <Trash2 size={13} />
             {t.tasks.deleteSelected(selected.size)}
@@ -115,7 +115,7 @@ export function TaskListPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         {isLoading ? (
           <div className="py-16 text-center text-slate-400 text-sm">{t.tasks.loading}</div>
         ) : items.length === 0 ? (
@@ -168,8 +168,8 @@ export function TaskListPage() {
               <button
                 key={p}
                 onClick={() => setPage(p)}
-                className={`w-8 h-8 rounded-lg font-medium ${
-                  p === page ? 'bg-blue-600 text-white' : 'hover:bg-slate-100 text-slate-600'
+                className={`h-8 w-8 rounded-md font-medium ${
+                  p === page ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100'
                 }`}
               >
                 {p}
@@ -232,7 +232,7 @@ function TaskRow({ task, selected, onSelect, onDelete, onClick }: {
       <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
         <button
           onClick={onDelete}
-          className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-red-50 text-red-400 hover:text-red-600 transition-all"
+          className="opacity-0 group-hover:opacity-100 rounded-md p-1.5 text-rose-400 transition-all hover:bg-rose-50 hover:text-rose-600"
           title={t.tasks.deleteAction}
         >
           <Trash2 size={14} />

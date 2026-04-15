@@ -4,8 +4,8 @@ export function WorkflowLegend() {
   const { t } = useI18n()
 
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-[24px] border border-slate-200/80 bg-white/75 px-4 py-3 text-xs text-slate-600 shadow-sm">
-      <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">
+    <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 py-1 text-xs text-slate-500">
+      <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
         {t.workflow.legend.title}
       </span>
       <LegendItem tone="bg-sky-500" label={t.workflow.legend.activeEdge} />
