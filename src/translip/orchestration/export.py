@@ -29,6 +29,18 @@ def build_request_payload(request: PipelineRequest) -> dict[str, Any]:
     return _jsonable(asdict(request))
 
 
+def _normalize_stage_rows(stages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    normalized_rows: list[dict[str, Any]] = []
+    for row in stages:
+        normalized = dict(row)
+        node_name = str(normalized.get("node_name") or normalized.get("stage_name") or "")
+        if node_name:
+            normalized.setdefault("node_name", node_name)
+            normalized.setdefault("stage_name", node_name)
+        normalized_rows.append(normalized)
+    return normalized_rows
+
+
 def build_pipeline_manifest(
     *,
     request: PipelineRequest,
@@ -38,10 +50,13 @@ def build_pipeline_manifest(
     status: str,
     error: str | None = None,
 ) -> dict[str, Any]:
+    normalized_rows = _normalize_stage_rows(stages)
     return {
         "job_id": job_id,
+        "template_id": request.template_id,
         "request": build_request_payload(request),
-        "stages": [_jsonable(stage) for stage in stages],
+        "stages": [_jsonable(stage) for stage in normalized_rows],
+        "nodes": [_jsonable(stage) for stage in normalized_rows],
         "final_artifacts": _jsonable(final_artifacts),
         "status": status,
         "error": error,
@@ -56,18 +71,29 @@ def build_pipeline_report(
     final_artifacts: dict[str, Any],
     status: str,
 ) -> dict[str, Any]:
-    cached_count = sum(1 for stage in stages if stage.get("status") == "cached")
-    failed_stage = next((stage.get("stage_name") for stage in stages if stage.get("status") == "failed"), None)
+    normalized_rows = _normalize_stage_rows(stages)
+    cached_count = sum(1 for stage in normalized_rows if stage.get("status") == "cached")
+    failed_stage = next(
+        (
+            stage.get("node_name") or stage.get("stage_name")
+            for stage in normalized_rows
+            if stage.get("status") == "failed"
+        ),
+        None,
+    )
     return {
         "job_id": job_id,
+        "template_id": request.template_id,
         "status": status,
         "request": build_request_payload(request),
         "summary": {
-            "stage_count": len(stages),
+            "stage_count": len(normalized_rows),
+            "node_count": len(normalized_rows),
             "cached_count": cached_count,
             "failed_stage": failed_stage,
         },
-        "stages": [_jsonable(stage) for stage in stages],
+        "stages": [_jsonable(stage) for stage in normalized_rows],
+        "nodes": [_jsonable(stage) for stage in normalized_rows],
         "final_artifacts": _jsonable(final_artifacts),
     }
 

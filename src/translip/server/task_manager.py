@@ -12,15 +12,14 @@ from typing import Any, AsyncGenerator, Dict, Optional
 from sqlmodel import Session, select
 
 from ..config import CACHE_ROOT, DEFAULT_PIPELINE_OUTPUT_ROOT
+from ..orchestration.graph import resolve_template_plan
+from ..orchestration.nodes import NODE_REGISTRY
 from ..types import PipelineRequest
 from .database import engine
 from .models import Task, TaskLog, TaskStage
 from .schemas import CreateTaskRequest, TaskConfigInput
 
 logger = logging.getLogger(__name__)
-
-PIPELINE_STAGES = ["stage1", "task-a", "task-b", "task-c", "task-d", "task-e", "task-g"]
-
 
 def _now_task_id() -> str:
     return "task-" + datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
@@ -29,20 +28,22 @@ def _now_task_id() -> str:
 def _build_pipeline_request(task: Task) -> PipelineRequest:
     cfg: Dict[str, Any] = task.config or {}
     output_root = Path(task.output_root)
-    # task-g (delivery) is a separate step handled after the pipeline
-    run_to = cfg.get("run_to_stage", "task-e")
-    if run_to == "task-g":
-        run_to = "task-e"
 
     return PipelineRequest(
         input_path=task.input_path,
         output_root=output_root,
+        template_id=cfg.get("template", "asr-dub-basic"),
+        delivery_policy={
+            "video_source": cfg.get("video_source", "original"),
+            "audio_source": cfg.get("audio_source", "both"),
+            "subtitle_source": cfg.get("subtitle_source", "asr"),
+        },
         target_lang=task.target_lang,
         translation_backend=cfg.get("translation_backend", "local-m2m100"),
         tts_backend=cfg.get("tts_backend", "qwen3tts"),
         device=cfg.get("device", "auto"),
         run_from_stage=cfg.get("run_from_stage", "stage1"),
-        run_to_stage=run_to,
+        run_to_stage=cfg.get("run_to_stage", "task-e"),
         reuse_existing=cfg.get("use_cache", True),
         separation_mode=cfg.get("separation_mode", "auto"),
         separation_quality=cfg.get("separation_quality", "balanced"),
@@ -59,6 +60,20 @@ def _build_pipeline_request(task: Task) -> PipelineRequest:
         glossary_path=cfg.get("translation_glossary"),
         registry_path=cfg.get("existing_registry"),
     )
+
+
+def _planned_task_nodes(config_dict: Dict[str, Any]) -> list[str]:
+    template_id = config_dict.get("template", "asr-dub-basic")
+    run_from = config_dict.get("run_from_stage", "stage1")
+    run_to = config_dict.get("run_to_stage", "task-e")
+    plan = resolve_template_plan(template_id)
+    start_hint = NODE_REGISTRY[run_from].sequence_hint
+    end_hint = NODE_REGISTRY[run_to].sequence_hint
+    return [
+        node_name
+        for node_name in plan.node_order
+        if start_hint <= NODE_REGISTRY[node_name].sequence_hint <= end_hint
+    ]
 
 
 def _run_pipeline_in_thread(task_id: str) -> None:
@@ -81,54 +96,25 @@ def _run_pipeline_in_thread(task_id: str) -> None:
             if not task:
                 return
             pipeline_req = _build_pipeline_request(task)
-            run_from_original = (task.config or {}).get("run_from_stage", "stage1")
-            run_to_original = (task.config or {}).get("run_to_stage", "task-e")
-
-        # If rerunning from task-g, skip the pipeline and only run delivery
-        if run_from_original == "task-g":
-            _run_delivery_step(task_id, pipeline_req)
-            with Session(engine) as session:
-                task = session.get(Task, task_id)
-                if task:
-                    # Check if task-g stage succeeded
-                    stmt = select(TaskStage).where(
-                        TaskStage.task_id == task_id,
-                        TaskStage.stage_name == "task-g",
-                    )
-                    stage_row = session.exec(stmt).first()
-                    delivery_ok = stage_row and stage_row.status == "succeeded"
-                    task.status = "succeeded" if delivery_ok else "failed"
-                    task.overall_progress = 100.0 if delivery_ok else task.overall_progress
-                    task.current_stage = "task-g"
-                    task.finished_at = datetime.now()
-                    task.updated_at = datetime.now()
-                    session.add(TaskLog(task_id=task_id, action="completed" if delivery_ok else "failed"))
-                    session.commit()
-            return
 
         result = run_pipeline(pipeline_req.normalized())
 
         pipeline_status = result.report.get("status", "failed")
 
-        # If task-g (delivery) was requested, run it after the pipeline
-        if run_to_original == "task-g" and pipeline_status == "succeeded":
-            _run_delivery_step(task_id, pipeline_req)
-
         with Session(engine) as session:
             task = session.get(Task, task_id)
             if not task:
                 return
-            task.status = "succeeded" if pipeline_status == "succeeded" else "failed"
-            task.overall_progress = 100.0 if pipeline_status == "succeeded" else task.overall_progress
-            if run_to_original == "task-g" and pipeline_status == "succeeded":
-                task.current_stage = "task-g"
+            task.status = pipeline_status
+            if pipeline_status in ("succeeded", "partial_success"):
+                task.overall_progress = 100.0
             task.finished_at = datetime.now()
             task.manifest_path = str(result.manifest_path) if result.manifest_path else None
             task.updated_at = datetime.now()
             session.add(
                 TaskLog(
                     task_id=task_id,
-                    action="completed" if task.status == "succeeded" else "failed",
+                    action="completed" if task.status in ("succeeded", "partial_success") else "failed",
                     detail=json.dumps({"status": pipeline_status}),
                 )
             )
@@ -221,10 +207,10 @@ def _sync_stages_from_manifest(task_id: str) -> None:
         except Exception:
             return
 
-        for stage_data in payload.get("stages", []):
+        for stage_data in payload.get("nodes", payload.get("stages", [])):
             if not isinstance(stage_data, dict):
                 continue
-            stage_name = stage_data.get("stage_name", "")
+            stage_name = stage_data.get("node_name") or stage_data.get("stage_name", "")
             if not stage_name:
                 continue
             stmt = select(TaskStage).where(
@@ -264,14 +250,14 @@ def _sync_status_to_db(task_id: str, status_path: Path) -> None:
                 break
             task.overall_progress = payload.get("overall_progress_percent", task.overall_progress)
             task.current_stage = payload.get("current_stage", task.current_stage)
-            if payload.get("status") in ("succeeded", "failed"):
+            if payload.get("status") in ("succeeded", "partial_success", "failed"):
                 task.status = payload["status"]
             task.updated_at = datetime.now()
 
-            for stage_data in payload.get("stages", []):
+            for stage_data in payload.get("nodes", payload.get("stages", [])):
                 if not isinstance(stage_data, dict):
                     continue
-                sn = stage_data.get("stage_name", "")
+                sn = stage_data.get("node_name") or stage_data.get("stage_name", "")
                 if not sn:
                     continue
                 stmt = select(TaskStage).where(
@@ -287,7 +273,7 @@ def _sync_status_to_db(task_id: str, status_path: Path) -> None:
                 session.add(row)
             session.commit()
 
-        if payload.get("status") in ("succeeded", "failed"):
+        if payload.get("status") in ("succeeded", "partial_success", "failed"):
             _sync_stages_from_manifest(task_id)
             break
 
@@ -318,17 +304,8 @@ class TaskManager:
         session.add(task)
         session.add(TaskLog(task_id=task_id, action="created"))
 
-        # Pre-create stage rows
-        to_stage = config_dict.get("run_to_stage", "task-e")
-        from_stage = config_dict.get("run_from_stage", "stage1")
-        active = False
-        for sn in PIPELINE_STAGES:
-            if sn == from_stage:
-                active = True
-            if active:
-                session.add(TaskStage(task_id=task_id, stage_name=sn))
-            if sn == to_stage:
-                break
+        for node_name in _planned_task_nodes(config_dict):
+            session.add(TaskStage(task_id=task_id, stage_name=node_name))
 
         session.commit()
         session.refresh(task)
@@ -398,14 +375,14 @@ class TaskManager:
                             "stages": payload.get("stages", []),
                         },
                     )
-                    if status in ("succeeded", "failed"):
+                    if status in ("succeeded", "partial_success", "failed"):
                         yield _sse_event("done", {"status": status, "overall_percent": pct})
                         return
             else:
                 # Check DB for final status
                 with Session(engine) as session:
                     task = session.get(Task, task_id)
-                    if task and task.status in ("succeeded", "failed"):
+                    if task and task.status in ("succeeded", "partial_success", "failed"):
                         yield _sse_event(
                             "done",
                             {"status": task.status, "overall_percent": task.overall_progress},

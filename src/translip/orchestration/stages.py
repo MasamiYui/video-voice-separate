@@ -9,6 +9,7 @@ STAGE_ORDER: list[PipelineStageName] = [
     "task-c",
     "task-d",
     "task-e",
+    "task-g",
 ]
 
 STAGE_WEIGHTS: dict[PipelineStageName, float] = {
@@ -18,6 +19,7 @@ STAGE_WEIGHTS: dict[PipelineStageName, float] = {
     "task-c": 0.15,
     "task-d": 0.35,
     "task-e": 0.20,
+    "task-g": 0.0,
 }
 
 

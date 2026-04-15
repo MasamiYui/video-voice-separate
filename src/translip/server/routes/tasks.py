@@ -8,11 +8,13 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session, select
 
+from ...orchestration.graph_export import build_workflow_graph_payload
 from ..database import get_session
 from ..models import Task, TaskLog, TaskStage
 from ..schemas import (
     CreateTaskRequest,
     RerunTaskRequest,
+    TaskGraphRead,
     TaskListResponse,
     TaskRead,
     TaskStageRead,
@@ -206,6 +208,20 @@ def get_task_manifest(task_id: str, session: Session = Depends(get_session)):
     if not manifest_path.exists():
         raise HTTPException(status_code=404, detail="Manifest not found")
     return json.loads(manifest_path.read_text(encoding="utf-8"))
+
+
+@router.get("/{task_id}/graph", response_model=TaskGraphRead)
+def get_task_graph(task_id: str, session: Session = Depends(get_session)):
+    task = session.get(Task, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    manifest_path = Path(task.output_root) / "workflow-manifest.json"
+    if not manifest_path.exists():
+        manifest_path = Path(task.output_root) / "pipeline-manifest.json"
+    if not manifest_path.exists():
+        raise HTTPException(status_code=404, detail="Workflow manifest not found")
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    return build_workflow_graph_payload(payload)
 
 
 @router.get("/{task_id}/stages/{stage_name}/manifest")

@@ -10,6 +10,8 @@ from ..exceptions import TranslipError
 from ..types import PipelineRequest, PipelineResult, PipelineStageName
 from ..utils.files import ensure_directory
 from .cache import StageCacheSpec, compute_cache_key, is_stage_cache_hit
+from .graph import resolve_template_plan
+from .nodes import NODE_REGISTRY
 from .commands import (
     build_stage1_command,
     build_task_a_command,
@@ -59,34 +61,40 @@ def _pipeline_paths(request: PipelineRequest) -> dict[str, Path]:
         "request_path": request.output_root / "request.json",
         "manifest_path": request.output_root / "pipeline-manifest.json",
         "report_path": request.output_root / "pipeline-report.json",
+        "workflow_manifest_path": request.output_root / "workflow-manifest.json",
+        "workflow_report_path": request.output_root / "workflow-report.json",
         "status_path": request.output_root / "pipeline-status.json",
         "logs_dir": request.output_root / "logs",
     }
 
 
 def _previous_stage_cache_keys(output_root: Path) -> dict[str, str]:
-    manifest_path = output_root / "pipeline-manifest.json"
+    manifest_path = output_root / "workflow-manifest.json"
+    if not manifest_path.exists():
+        manifest_path = output_root / "pipeline-manifest.json"
     if not manifest_path.exists():
         return {}
     payload = _load_json(manifest_path)
     keys: dict[str, str] = {}
-    for row in payload.get("stages", []):
+    for row in payload.get("nodes", payload.get("stages", [])):
         if not isinstance(row, dict):
             continue
-        stage_name = str(row.get("stage_name") or "")
+        stage_name = str(row.get("node_name") or row.get("stage_name") or "")
         cache_key = str(row.get("cache_key") or "")
         if stage_name and cache_key:
             keys[stage_name] = cache_key
     return keys
 
 
-def _stage_cache_payload(request: PipelineRequest, stage_name: PipelineStageName) -> dict[str, Any]:
+def _stage_cache_payload(request: PipelineRequest, stage_name: str) -> dict[str, Any]:
     common = {
         "input_path": str(request.input_path),
+        "template_id": request.template_id,
         "target_lang": request.target_lang,
         "translation_backend": request.translation_backend,
         "tts_backend": request.tts_backend,
         "device": request.device,
+        "delivery_policy": dict(request.delivery_policy),
     }
     if stage_name == "stage1":
         common.update(
@@ -136,9 +144,9 @@ def _stage_cache_payload(request: PipelineRequest, stage_name: PipelineStageName
     return common
 
 
-def _stage_cache_spec(
+def _node_cache_spec(
     request: PipelineRequest,
-    stage_name: PipelineStageName,
+    stage_name: str,
     previous_cache_keys: dict[str, str],
 ) -> StageCacheSpec:
     if stage_name == "stage1":
@@ -156,9 +164,15 @@ def _stage_cache_spec(
     elif stage_name == "task-d":
         manifest_path = task_d_stage_manifest_path(request)
         artifact_paths = [manifest_path]
-    else:
+    elif stage_name == "task-e":
         manifest_path = task_e_manifest_path(request)
         artifact_paths = [task_e_dub_voice_path(request), task_e_preview_mix_path(request), task_e_mix_report_path(request)]
+    elif stage_name == "task-g":
+        manifest_path = request.output_root / "task-g" / "delivery-manifest.json"
+        artifact_paths = [manifest_path, request.output_root / "task-g" / "delivery-report.json"]
+    else:
+        manifest_path = request.output_root / stage_name / f"{stage_name}-manifest.json"
+        artifact_paths = [manifest_path]
 
     return StageCacheSpec(
         stage_name=stage_name,
@@ -185,6 +199,29 @@ def _final_artifacts(request: PipelineRequest) -> dict[str, str]:
 
 def _stage_log_path(request: PipelineRequest, stage_name: PipelineStageName) -> Path:
     return request.output_root / "logs" / f"{stage_name}.log"
+
+
+def _node_log_path(request: PipelineRequest, node_name: str) -> Path:
+    return request.output_root / "logs" / f"{node_name}.log"
+
+
+def _resolve_execution_nodes(request: PipelineRequest) -> tuple[Any, list[str]]:
+    plan = resolve_template_plan(request.template_id)
+    start_hint = NODE_REGISTRY[request.run_from_stage].sequence_hint
+    end_hint = NODE_REGISTRY[request.run_to_stage].sequence_hint
+    node_names = [
+        node_name
+        for node_name in plan.node_order
+        if start_hint <= NODE_REGISTRY[node_name].sequence_hint <= end_hint
+    ]
+    return plan, node_names
+
+
+def _node_weights(node_names: list[str]) -> dict[str, float]:
+    if not node_names:
+        return {}
+    weight = 1.0 / len(node_names)
+    return {node_name: weight for node_name in node_names}
 
 
 def execute_stage(
@@ -314,14 +351,64 @@ def execute_stage(
     raise ValueError(f"Unsupported stage: {stage}")
 
 
+def execute_delivery_node(
+    request: PipelineRequest,
+    *,
+    monitor: PipelineMonitor,
+) -> dict[str, Any]:
+    from ..delivery.runner import export_video
+    from ..types import ExportVideoRequest
+
+    audio_source = request.delivery_policy.get("audio_source", "both")
+    export_preview = audio_source in {"preview_mix", "both"}
+    export_dub = audio_source in {"dub_voice", "both"}
+    monitor.update_stage_progress("task-g", 5.0, "assembling delivery")
+    result = export_video(
+        ExportVideoRequest(
+            input_video_path=request.input_path,
+            pipeline_root=request.output_root,
+            output_dir=request.output_root / "task-g",
+            target_lang=request.target_lang,
+            export_preview=export_preview,
+            export_dub=export_dub,
+        )
+    )
+    artifact_paths = [
+        str(path)
+        for path in (
+            result.artifacts.preview_video_path,
+            result.artifacts.dub_video_path,
+            result.artifacts.manifest_path,
+            result.artifacts.report_path,
+        )
+        if path is not None
+    ]
+    return {
+        "manifest_path": str(result.artifacts.manifest_path),
+        "artifact_paths": artifact_paths,
+        "log_path": str(_node_log_path(request, "task-g")),
+    }
+
+
+def execute_node(
+    node_name: str,
+    request: PipelineRequest,
+    *,
+    monitor: PipelineMonitor,
+) -> dict[str, Any]:
+    if node_name in {"stage1", "task-a", "task-b", "task-c", "task-d", "task-e"}:
+        return execute_stage(node_name, request, monitor=monitor)
+    if node_name == "task-g":
+        return execute_delivery_node(request, monitor=monitor)
+    raise TranslipError(f"Unsupported workflow node: {node_name}")
+
+
 def run_pipeline(
     request: PipelineRequest,
     *,
     stage_executor=None,
 ) -> PipelineResult:
     request = request.normalized()
-    if stage_executor is None:
-        stage_executor = execute_stage
     if not request.input_path.exists():
         raise TranslipError(f"Pipeline input path does not exist: {request.input_path}")
 
@@ -331,68 +418,91 @@ def run_pipeline(
     write_json(request_payload, paths["request_path"])
 
     job_id = _now_job_id()
+    plan, node_names = _resolve_execution_nodes(request)
     monitor = PipelineMonitor(
         job_id=job_id,
         status_path=paths["status_path"],
         write_status=request.write_status,
+        item_order=node_names,
+        item_weights=_node_weights(node_names),
     )
-    stage_names = resolve_stage_sequence(request.run_from_stage, request.run_to_stage)
     previous_cache_keys = _previous_stage_cache_keys(request.output_root) if request.reuse_existing else {}
     force_stages = {stage for stage in (request.force_stages or [])}
     stage_rows: list[dict[str, Any]] = []
+    optional_failures: list[str] = []
 
     try:
-        for stage_name in stage_names:
-            cache_spec = _stage_cache_spec(request, stage_name, previous_cache_keys)
+        for node_name in node_names:
+            node_meta = plan.nodes[node_name]
+            cache_spec = _node_cache_spec(request, node_name, previous_cache_keys)
             stage_row: dict[str, Any] = {
-                "stage_name": stage_name,
+                "node_name": node_name,
+                "stage_name": node_name,
+                "required": node_meta.required,
                 "status": "pending",
                 "cache_key": cache_spec.cache_key,
                 "cache_hit": False,
                 "manifest_path": str(cache_spec.manifest_path),
                 "artifact_paths": [str(path) for path in cache_spec.artifact_paths],
-                "log_path": str(_stage_log_path(request, stage_name)),
+                "log_path": str(_node_log_path(request, node_name)),
                 "error": None,
             }
             stage_rows.append(stage_row)
-            if request.reuse_existing and stage_name not in force_stages and is_stage_cache_hit(cache_spec):
-                monitor.start_stage(stage_name, current_step="cached")
-                monitor.complete_stage(stage_name, status="cached", current_step="cached")
+            if request.reuse_existing and node_name not in force_stages and is_stage_cache_hit(cache_spec):
+                monitor.start_stage(node_name, current_step="cached")
+                monitor.complete_stage(node_name, status="cached", current_step="cached")
                 stage_row["status"] = "cached"
                 stage_row["cache_hit"] = True
-                print(f"[stage:{stage_name}] status=cached")
+                print(f"[node:{node_name}] status=cached")
                 continue
 
-            monitor.start_stage(stage_name, current_step="starting")
-            print(f"[pipeline] status=running stage={stage_name}")
-            result = stage_executor(stage_name, request, monitor=monitor)
-            monitor.complete_stage(stage_name, status="succeeded", current_step="completed")
+            monitor.start_stage(node_name, current_step="starting")
+            print(f"[workflow] status=running node={node_name}")
+            try:
+                if stage_executor is not None and node_name in {"stage1", "task-a", "task-b", "task-c", "task-d", "task-e"}:
+                    result = stage_executor(node_name, request, monitor=monitor)
+                else:
+                    result = execute_node(node_name, request, monitor=monitor)
+            except Exception as exc:
+                stage_row["status"] = "failed"
+                stage_row["error"] = str(exc)
+                stage_row["error_message"] = str(exc)
+                if node_meta.required:
+                    monitor.fail_stage(node_name, error=str(exc))
+                    raise
+                optional_failures.append(node_name)
+                monitor.fail_stage(node_name, error=str(exc), pipeline_status="running")
+                print(f"[node:{node_name}] status=failed required=false error={exc}")
+                continue
+
+            monitor.complete_stage(node_name, status="succeeded", current_step="completed")
             stage_row["status"] = "succeeded"
             stage_row["manifest_path"] = result.get("manifest_path", stage_row["manifest_path"])
             stage_row["artifact_paths"] = result.get("artifact_paths", stage_row["artifact_paths"])
             stage_row["log_path"] = result.get("log_path", stage_row["log_path"])
-            print(
-                f"[stage:{stage_name}] status=succeeded progress={monitor.payload()['overall_progress_percent']}%"
-            )
+            print(f"[node:{node_name}] status=succeeded progress={monitor.payload()['overall_progress_percent']}%")
 
         final_artifacts = _final_artifacts(request)
+        workflow_status = "partial_success" if optional_failures else "succeeded"
         manifest = build_pipeline_manifest(
             request=request,
             job_id=job_id,
             stages=stage_rows,
             final_artifacts=final_artifacts,
-            status="succeeded",
+            status=workflow_status,
         )
         report = build_pipeline_report(
             request=request,
             job_id=job_id,
             stages=stage_rows,
             final_artifacts=final_artifacts,
-            status="succeeded",
+            status=workflow_status,
         )
         write_json(manifest, paths["manifest_path"])
         write_json(report, paths["report_path"])
-        monitor.finalize(status="succeeded")
+        write_json(manifest, paths["workflow_manifest_path"])
+        write_json(report, paths["workflow_report_path"])
+        monitor.finalize(status=workflow_status)
         return PipelineResult(
             request=request,
             output_root=request.output_root,
@@ -407,11 +517,13 @@ def run_pipeline(
         if stage_rows and stage_rows[-1]["status"] == "pending":
             stage_rows[-1]["status"] = "failed"
             stage_rows[-1]["error"] = str(exc)
-            monitor.fail_stage(stage_rows[-1]["stage_name"], error=str(exc), current_step="failed")
+            stage_rows[-1]["error_message"] = str(exc)
+            monitor.fail_stage(stage_rows[-1]["stage_name"], error=str(exc))
         elif not stage_rows or stage_rows[-1]["status"] != "failed":
             stage_rows.append(
                 {
-                    "stage_name": stage_names[len(stage_rows)] if len(stage_rows) < len(stage_names) else "unknown",
+                    "node_name": node_names[len(stage_rows)] if len(stage_rows) < len(node_names) else "unknown",
+                    "stage_name": node_names[len(stage_rows)] if len(stage_rows) < len(node_names) else "unknown",
                     "status": "failed",
                     "cache_key": "",
                     "cache_hit": False,
@@ -419,9 +531,10 @@ def run_pipeline(
                     "artifact_paths": [],
                     "log_path": "",
                     "error": str(exc),
+                    "error_message": str(exc),
                 }
             )
-            monitor.fail_stage(stage_rows[-1]["stage_name"], error=str(exc), current_step="failed")
+            monitor.fail_stage(stage_rows[-1]["stage_name"], error=str(exc))
         final_artifacts = _final_artifacts(request)
         manifest = build_pipeline_manifest(
             request=request,
@@ -440,6 +553,8 @@ def run_pipeline(
         )
         write_json(manifest, paths["manifest_path"])
         write_json(report, paths["report_path"])
+        write_json(manifest, paths["workflow_manifest_path"])
+        write_json(report, paths["workflow_report_path"])
         monitor.finalize(status="failed")
         if isinstance(exc, StageSubprocessError):
             raise TranslipError(
@@ -448,4 +563,4 @@ def run_pipeline(
         raise
 
 
-__all__ = ["execute_stage", "run_pipeline"]
+__all__ = ["execute_delivery_node", "execute_node", "execute_stage", "run_pipeline"]

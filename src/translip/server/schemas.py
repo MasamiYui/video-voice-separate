@@ -48,6 +48,24 @@ class TaskListResponse(BaseModel):
     size: int
 
 
+class WorkflowGraphNodeRead(BaseModel):
+    id: str
+    label: str
+    group: str
+    required: bool
+    status: str
+    progress_percent: float
+    manifest_path: Optional[str] = None
+    log_path: Optional[str] = None
+    error_message: Optional[str] = None
+
+
+class TaskGraphRead(BaseModel):
+    workflow: Dict[str, Any]
+    nodes: List[WorkflowGraphNodeRead]
+    edges: List[Dict[str, str]]
+
+
 class TaskConfigInput(BaseModel):
     device: str = "auto"
     template: str = "asr-dub-basic"

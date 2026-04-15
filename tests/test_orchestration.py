@@ -162,3 +162,99 @@ def test_pipeline_runner_marks_cached_stage_when_manifest_reusable(tmp_path: Pat
     assert executed == []
     payload = json.loads(result.manifest_path.read_text(encoding="utf-8"))
     assert payload["stages"][0]["status"] == "cached"
+
+
+def test_run_pipeline_executes_nodes_from_template_plan(tmp_path: Path, monkeypatch) -> None:
+    from translip.orchestration.runner import run_pipeline
+    from translip.types import PipelineRequest
+
+    input_path = tmp_path / "sample.mp4"
+    input_path.write_text("placeholder", encoding="utf-8")
+    request = PipelineRequest(
+        input_path=input_path,
+        output_root=tmp_path / "workflow-out",
+        template_id="asr-dub-basic",
+    )
+
+    monkeypatch.setattr(
+        "translip.orchestration.runner.resolve_template_plan",
+        lambda template_id: type(
+            "Plan",
+            (),
+            {
+                "template_id": template_id,
+                "node_order": ["stage1", "task-a", "task-b"],
+                "nodes": {
+                    "stage1": type("Node", (), {"required": True})(),
+                    "task-a": type("Node", (), {"required": True})(),
+                    "task-b": type("Node", (), {"required": True})(),
+                },
+            },
+        )(),
+    )
+
+    calls: list[str] = []
+
+    def fake_execute(node_name: str, *_args, **_kwargs):
+        calls.append(node_name)
+        node_dir = request.output_root / node_name
+        node_dir.mkdir(parents=True, exist_ok=True)
+        manifest_path = node_dir / f"{node_name}.json"
+        manifest_path.write_text(json.dumps({"status": "succeeded"}), encoding="utf-8")
+        return {"manifest_path": str(manifest_path), "artifact_paths": [str(manifest_path)]}
+
+    monkeypatch.setattr("translip.orchestration.runner.execute_node", fake_execute)
+
+    result = run_pipeline(request)
+
+    assert calls == ["stage1", "task-a", "task-b"]
+    payload = json.loads(result.report_path.read_text(encoding="utf-8"))
+    assert payload["status"] == "succeeded"
+
+
+def test_run_pipeline_marks_partial_success_when_optional_node_fails(tmp_path: Path, monkeypatch) -> None:
+    from translip.orchestration.runner import run_pipeline
+    from translip.types import PipelineRequest
+
+    input_path = tmp_path / "sample.mp4"
+    input_path.write_text("placeholder", encoding="utf-8")
+    request = PipelineRequest(
+        input_path=input_path,
+        output_root=tmp_path / "workflow-out",
+        template_id="asr-dub+ocr-subs+erase",
+        run_to_stage="task-g",
+    )
+
+    monkeypatch.setattr(
+        "translip.orchestration.runner.resolve_template_plan",
+        lambda _template_id: type(
+            "Plan",
+            (),
+            {
+                "template_id": "asr-dub+ocr-subs+erase",
+                "node_order": ["stage1", "ocr-detect", "subtitle-erase", "task-g"],
+                "nodes": {
+                    "stage1": type("Node", (), {"required": True})(),
+                    "ocr-detect": type("Node", (), {"required": True})(),
+                    "subtitle-erase": type("Node", (), {"required": False})(),
+                    "task-g": type("Node", (), {"required": True})(),
+                },
+            },
+        )(),
+    )
+
+    def fake_execute(node_name: str, *_args, **_kwargs):
+        if node_name == "subtitle-erase":
+            raise RuntimeError("erase failed")
+        node_dir = request.output_root / node_name
+        node_dir.mkdir(parents=True, exist_ok=True)
+        manifest_path = node_dir / f"{node_name}.json"
+        manifest_path.write_text(json.dumps({"status": "succeeded"}), encoding="utf-8")
+        return {"manifest_path": str(manifest_path), "artifact_paths": [str(manifest_path)]}
+
+    monkeypatch.setattr("translip.orchestration.runner.execute_node", fake_execute)
+
+    result = run_pipeline(request)
+
+    payload = json.loads(result.report_path.read_text(encoding="utf-8"))
+    assert payload["status"] == "partial_success"
