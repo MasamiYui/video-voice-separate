@@ -50,16 +50,9 @@ function LaneBgNode({ data }: NodeProps) {
   const d = data as LaneBgData
   return (
     <div
-      className="flex flex-col border-b border-slate-100"
+      className="border-b border-slate-100/80"
       style={{ width: d.nodeWidth, height: d.nodeHeight, pointerEvents: 'none' }}
-    >
-      {/* Lane label */}
-      <div className="px-1 pt-2.5 pb-1">
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
-          {d.label}
-        </span>
-      </div>
-    </div>
+    />
   )
 }
 
@@ -238,35 +231,54 @@ export function WorkflowFlowGraph({
     <div className={cn('space-y-3', compact && 'space-y-2')}>
       {showLegend && <WorkflowLegend />}
 
-      <div
-        className="overflow-hidden bg-slate-50/40"
-        style={{ height: containerHeight }}
-      >
-        <ReactFlow
-          nodes={rfNodes}
-          edges={rfEdges}
-          nodeTypes={NODE_TYPES}
-          fitView
-          fitViewOptions={{ padding: compact ? 0.1 : 0.12, includeHiddenNodes: false }}
-          nodesDraggable={false}
-          nodesConnectable={false}
-          panOnDrag={!compact}
-          zoomOnScroll={!compact}
-          zoomOnDoubleClick={!compact}
-          preventScrolling={compact}
-          selectNodesOnDrag={false}
-          proOptions={{ hideAttribution: true }}
-          onNodeClick={onNodeClick}
-          minZoom={0.25}
-          maxZoom={2}
-        >
-          <Background
-            variant={BackgroundVariant.Dots}
-            gap={28}
-            size={1}
-            color="#e8edf3"
-          />
-        </ReactFlow>
+      {/* Lane label sidebar + ReactFlow canvas */}
+      <div className="flex overflow-hidden" style={{ height: containerHeight }}>
+
+        {/* Lane labels – full mode only, outside ReactFlow so they never overlap nodes */}
+        {!compact && (
+          <div className="flex shrink-0 flex-col border-r border-slate-100">
+            {activeLanes.map(lane => (
+              <div
+                key={lane.id}
+                style={{ height: cfg.LANE_HEIGHT }}
+                className="flex items-center justify-end border-b border-slate-100/80 px-3 last:border-b-0"
+              >
+                <span className="text-[9px] font-semibold uppercase leading-tight tracking-widest text-slate-300">
+                  {t.workflow.lanes[lane.id]}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ReactFlow canvas */}
+        <div className="flex-1 overflow-hidden bg-slate-50/30">
+          <ReactFlow
+            nodes={rfNodes}
+            edges={rfEdges}
+            nodeTypes={NODE_TYPES}
+            fitView
+            fitViewOptions={{ padding: compact ? 0.1 : 0.1, includeHiddenNodes: false }}
+            nodesDraggable={false}
+            nodesConnectable={false}
+            panOnDrag={!compact}
+            zoomOnScroll={!compact}
+            zoomOnDoubleClick={!compact}
+            preventScrolling={compact}
+            selectNodesOnDrag={false}
+            proOptions={{ hideAttribution: true }}
+            onNodeClick={onNodeClick}
+            minZoom={0.25}
+            maxZoom={2}
+          >
+            <Background
+              variant={BackgroundVariant.Dots}
+              gap={28}
+              size={1}
+              color="#e8edf3"
+            />
+          </ReactFlow>
+        </div>
       </div>
     </div>
   )
