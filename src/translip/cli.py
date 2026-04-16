@@ -562,6 +562,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"best_run={result.summary.get('best_run')}")
         return 0
 
+    if args.command == "build-speaker-registry":
         request = SpeakerRegistryRequest(
             segments_path=args.segments,
             audio_path=args.audio,

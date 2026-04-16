@@ -1,4 +1,7 @@
-from translip.cli import build_parser
+from pathlib import Path
+from types import SimpleNamespace
+
+from translip.cli import build_parser, main
 
 
 def test_cli_run_parser() -> None:
@@ -69,6 +72,7 @@ def test_cli_benchmark_transcription_parser() -> None:
     assert args.asr_model == "medium"
 
 
+def test_cli_build_speaker_registry_parser() -> None:
     parser = build_parser()
     args = parser.parse_args(
         [
@@ -87,6 +91,58 @@ def test_cli_benchmark_transcription_parser() -> None:
     assert args.audio == "voice.wav"
     assert args.registry == "registry/speaker_registry.json"
     assert args.update_registry is True
+
+
+def test_cli_main_build_speaker_registry_command(monkeypatch, capsys) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_build_speaker_registry(request):
+        captured["request"] = request
+        return SimpleNamespace(
+            artifacts=SimpleNamespace(
+                profiles_path=Path("/tmp/profiles.json"),
+                matches_path=Path("/tmp/matches.json"),
+                registry_snapshot_path=Path("/tmp/registry.json"),
+                manifest_path=Path("/tmp/manifest.json"),
+            )
+        )
+
+    monkeypatch.setattr("translip.cli.configure_logging", lambda *, verbose: None)
+    monkeypatch.setattr("translip.cli.build_speaker_registry", fake_build_speaker_registry)
+
+    exit_code = main(
+        [
+            "build-speaker-registry",
+            "--segments",
+            "segments.zh.json",
+            "--audio",
+            "voice.wav",
+            "--output-dir",
+            "output-speakers",
+            "--registry",
+            "registry/speaker_registry.json",
+            "--device",
+            "auto",
+            "--top-k",
+            "3",
+            "--update-registry",
+        ]
+    )
+
+    assert exit_code == 0
+    assert captured["request"].segments_path == "segments.zh.json"
+    assert captured["request"].audio_path == "voice.wav"
+    assert captured["request"].output_dir == "output-speakers"
+    assert captured["request"].registry_path == "registry/speaker_registry.json"
+    assert captured["request"].device == "auto"
+    assert captured["request"].top_k == 3
+    assert captured["request"].update_registry is True
+
+    stdout = capsys.readouterr().out
+    assert "profiles=/tmp/profiles.json" in stdout
+    assert "matches=/tmp/matches.json" in stdout
+    assert "registry=/tmp/registry.json" in stdout
+    assert "manifest=/tmp/manifest.json" in stdout
 
 
 def test_cli_translate_script_parser() -> None:

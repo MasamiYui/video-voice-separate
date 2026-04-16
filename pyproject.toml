@@ -34,6 +34,8 @@ dev = [
 [project.scripts]
 translip = "translip.cli:main"
 translip-server = "translip.server.app:run_server"
+video-voice-separate = "video_voice_separate.cli:main"
+video-voice-server = "video_voice_separate.server.app:run_server"
 
 [build-system]
 requires = ["hatchling>=1.27.0"]
