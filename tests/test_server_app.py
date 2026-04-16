@@ -22,3 +22,13 @@ def test_frontend_spa_fallback_serves_index_html_for_task_routes() -> None:
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
     assert "<!doctype html>" in response.text.lower()
+
+
+def test_config_defaults_run_full_pipeline_to_task_g() -> None:
+    client = TestClient(app_module.app)
+
+    response = client.get("/api/config/defaults")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["run_to_stage"] == "task-g"

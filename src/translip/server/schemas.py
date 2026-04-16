@@ -70,7 +70,7 @@ class TaskConfigInput(BaseModel):
     device: str = "auto"
     template: str = "asr-dub-basic"
     run_from_stage: str = "stage1"
-    run_to_stage: str = "task-e"
+    run_to_stage: str = "task-g"
     use_cache: bool = True
     keep_intermediate: bool = False
     video_source: str = "original"

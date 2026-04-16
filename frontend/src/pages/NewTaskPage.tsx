@@ -15,7 +15,7 @@ const defaultConfig: Partial<TaskConfig> = {
   device: 'auto',
   template: 'asr-dub-basic',
   run_from_stage: 'stage1',
-  run_to_stage: 'task-e',
+  run_to_stage: 'task-g',
   use_cache: true,
   keep_intermediate: false,
   video_source: 'original',
@@ -169,6 +169,27 @@ export function NewTaskPage() {
     setConfig(prev => ({ ...prev, ...patch }))
   }
 
+  const updateTemplate = (nextTemplateValue: string) => {
+    const nextTemplate = normalizeTemplateId(nextTemplateValue)
+    const currentTemplate = normalizeTemplateId(config.template)
+    const currentDefaults = getTemplateDefaults(currentTemplate)
+    const nextDefaults = getTemplateDefaults(nextTemplate)
+
+    const patch: Partial<TaskConfig> = { template: nextTemplate }
+
+    const currentRunToStage = config.run_to_stage ?? currentDefaults.run_to_stage
+    if (currentRunToStage === currentDefaults.run_to_stage) {
+      patch.run_to_stage = nextDefaults.run_to_stage
+    }
+
+    const currentVideoSource = config.video_source ?? currentDefaults.video_source
+    if (currentVideoSource === currentDefaults.video_source) {
+      patch.video_source = nextDefaults.video_source
+    }
+
+    patchConfig(patch)
+  }
+
   const probeMutation = useMutation({
     mutationFn: (path: string) => systemApi.probe(path),
     onSuccess: data => setMediaInfo(data),
@@ -276,7 +297,7 @@ export function NewTaskPage() {
           <Field label={t.newTask.fields.template} hint={t.newTask.hints.template}>
             <Select
               value={templateId}
-              onChange={value => patchConfig({ template: normalizeTemplateId(value) })}
+              onChange={updateTemplate}
               options={templateOptions}
             />
           </Field>
@@ -346,7 +367,7 @@ export function NewTaskPage() {
         </Field>
         <Field label={t.newTask.fields.toStage}>
           <Select
-            value={config.run_to_stage ?? 'task-e'}
+            value={config.run_to_stage ?? 'task-g'}
             onChange={value => patchConfig({ run_to_stage: value })}
             options={stageOptions}
           />
@@ -516,7 +537,7 @@ export function NewTaskPage() {
         />
         <ConfirmRow
           label={t.newTask.summary.stageRange}
-          value={`${getStageShortLabel((config.run_from_stage ?? 'stage1') as typeof STAGE_ORDER[number])} → ${getStageShortLabel((config.run_to_stage ?? 'task-e') as typeof STAGE_ORDER[number])}`}
+          value={`${getStageShortLabel((config.run_from_stage ?? 'stage1') as typeof STAGE_ORDER[number])} → ${getStageShortLabel((config.run_to_stage ?? 'task-g') as typeof STAGE_ORDER[number])}`}
         />
         <ConfirmRow label={t.newTask.summary.translationBackend} value={config.translation_backend ?? t.common.notAvailable} />
         <ConfirmRow label={t.newTask.summary.ttsBackend} value={config.tts_backend ?? t.common.notAvailable} />
@@ -620,4 +641,18 @@ function normalizeTemplateId(value: unknown): TaskConfig['template'] {
     return value
   }
   return 'asr-dub-basic'
+}
+
+function getTemplateDefaults(templateId: TaskConfig['template']) {
+  if (templateId === 'asr-dub+ocr-subs+erase') {
+    return {
+      run_to_stage: 'task-g',
+      video_source: 'clean_if_available',
+    } as const
+  }
+
+  return {
+    run_to_stage: 'task-g',
+    video_source: 'original',
+  } as const
 }

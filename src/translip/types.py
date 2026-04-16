@@ -428,7 +428,7 @@ class PipelineRequest:
     tts_backend: TtsBackendName = "qwen3tts"
     device: Device = "auto"
     run_from_stage: PipelineStageName = "stage1"
-    run_to_stage: PipelineStageName = "task-e"
+    run_to_stage: PipelineStageName = "task-g"
     resume: bool = False
     force_stages: list[PipelineStageName] | None = None
     reuse_existing: bool = True

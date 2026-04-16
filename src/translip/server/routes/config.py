@@ -16,7 +16,7 @@ router = APIRouter(prefix="/api/config", tags=["config"])
 _DEFAULT_CONFIG = {
     "device": "auto",
     "run_from_stage": "stage1",
-    "run_to_stage": "task-e",
+    "run_to_stage": "task-g",
     "use_cache": True,
     "keep_intermediate": False,
     "separation_mode": "auto",
