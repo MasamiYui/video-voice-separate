@@ -774,7 +774,53 @@ SILICONFLOW_API_KEY=... uv run translip translate-script \
 
 这条路线最适合当前仓库的工程状态，也最利于后续任务 D/E 落地。
 
-## 16. 参考资料
+## 16. 译文精简 (Condensation)
+
+### 16.1 动机
+
+中译英后的文本往往比原始中文对话朗读时长更长，导致 TTS 合成音频溢出 → Task E 时间轴重叠 → 片段被丢弃。
+从语言层面缩短译文（而非在音频层面压缩/裁剪）能保留完整语义和自然语感。
+
+### 16.2 condense_mode 三档
+
+| 模式 | 触发条件 | 行为 |
+|---|---|---|
+| `off`（默认） | — | 不精简，保持原始译文 |
+| `smart` | `fit_level = risky`（ratio > 1.30） | 仅对严重超时段调用 LLM 精简 |
+| `aggressive` | `fit_level = risky` 或 `review`（ratio > 1.10） | 所有超时段都调用 LLM 精简 |
+
+### 16.3 实现机制
+
+1. 翻译完成后，按 `condense_mode` 筛选需要精简的 segment
+2. 构建 `CondenseInput`（含原文、当前译文、目标秒数、字符预算、受保护术语列表）
+3. 批量调用 `SiliconFlowBackend.condense_batch()`，LLM 返回更短的译文
+4. 精简后重新计算 `duration_budget` 和 `qa_flags`
+5. 保留 `original_target_text` 和 `condense_status` 字段，方便审校
+
+### 16.4 保护规则
+
+- **受保护术语**（`glossary_matches`）必须出现在精简后的文本中，否则回退原译并标 `condense_failed`
+- **精简后更长**（不应发生但有保险）：回退原译
+- **LLM 调用失败**：单条失败标 `condense_failed`，不阻塞整体流程
+
+### 16.5 后端支持
+
+| 后端 | `supports_condensation` | 说明 |
+|---|---|---|
+| `siliconflow` | `True` | 通过 Chat Completion API 精简 |
+| `local-m2m100` | `False` | 本地翻译模型无精简能力，`condense_mode` 非 off 时打 warning 跳过 |
+
+### 16.6 输出扩展
+
+- `translation.{lang}.json` 新增 `stats.condense_counts`（`condensed` / `condense_failed` / `still_risky` / `skipped` 各多少条）
+- 每条 segment 新增 `original_target_text` 和 `condense_status` 字段
+
+### 16.7 CLI / UI
+
+- CLI: `--condense-mode off|smart|aggressive`
+- UI: Task C 配置区新增"译文精简"下拉，三档可选
+
+## 17. 参考资料
 
 - M2M100 模型页: [facebook/m2m100_418M](https://huggingface.co/facebook/m2m100_418M)
 - SiliconFlow 官方文档首页: [docs.siliconflow.cn](https://docs.siliconflow.cn/)

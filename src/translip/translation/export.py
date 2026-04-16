@@ -43,11 +43,14 @@ def build_translation_payload(
 ) -> dict[str, Any]:
     qa_counts: dict[str, int] = {}
     fit_counts: dict[str, int] = {}
+    condense_counts: dict[str, int] = {}
     for segment in segments:
         fit_level = segment["duration_budget"]["fit_level"]
         fit_counts[fit_level] = fit_counts.get(fit_level, 0) + 1
         for flag in segment["qa_flags"]:
             qa_counts[flag] = qa_counts.get(flag, 0) + 1
+        status = str(segment.get("condense_status") or "skipped")
+        condense_counts[status] = condense_counts.get(status, 0) + 1
     return {
         "input": {
             "segments_path": str(request.segments_path),
@@ -61,6 +64,7 @@ def build_translation_payload(
             "source_lang": request.source_lang,
             "target_lang": request.target_lang,
             "output_tag": output_tag,
+            "condense_mode": request.condense_mode,
         },
         "stats": {
             "segment_count": len(segments),
@@ -69,6 +73,7 @@ def build_translation_payload(
             "glossary_match_count": glossary_match_count,
             "qa_flag_counts": qa_counts,
             "duration_fit_counts": fit_counts,
+            "condense_counts": condense_counts,
         },
         "segments": segments,
     }

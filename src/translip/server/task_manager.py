@@ -17,6 +17,7 @@ from ..orchestration.nodes import NODE_REGISTRY
 from ..types import PipelineRequest
 from .database import engine
 from .models import Task, TaskLog, TaskStage
+from .task_config import normalize_task_config
 from .schemas import CreateTaskRequest, TaskConfigInput
 
 logger = logging.getLogger(__name__)
@@ -26,7 +27,7 @@ def _now_task_id() -> str:
 
 
 def _build_pipeline_request(task: Task) -> PipelineRequest:
-    cfg: Dict[str, Any] = task.config or {}
+    cfg: Dict[str, Any] = normalize_task_config(task.config)
     output_root = Path(task.output_root)
 
     return PipelineRequest(
@@ -45,7 +46,7 @@ def _build_pipeline_request(task: Task) -> PipelineRequest:
         tts_backend=cfg.get("tts_backend", "qwen3tts"),
         device=cfg.get("device", "auto"),
         run_from_stage=cfg.get("run_from_stage", "stage1"),
-        run_to_stage=cfg.get("run_to_stage", "task-e"),
+        run_to_stage=cfg.get("run_to_stage", "task-g"),
         reuse_existing=cfg.get("use_cache", True),
         separation_mode=cfg.get("separation_mode", "auto"),
         separation_quality=cfg.get("separation_quality", "balanced"),
@@ -59,15 +60,17 @@ def _build_pipeline_request(task: Task) -> PipelineRequest:
         background_gain_db=cfg.get("background_gain_db", -8.0),
         api_base_url=cfg.get("siliconflow_base_url"),
         api_model=cfg.get("siliconflow_model"),
+        condense_mode=cfg.get("condense_mode", "off"),
         glossary_path=cfg.get("translation_glossary"),
         registry_path=cfg.get("existing_registry"),
     )
 
 
 def _planned_task_nodes(config_dict: Dict[str, Any]) -> list[str]:
+    config_dict = normalize_task_config(config_dict)
     template_id = config_dict.get("template", "asr-dub-basic")
     run_from = config_dict.get("run_from_stage", "stage1")
-    run_to = config_dict.get("run_to_stage", "task-e")
+    run_to = config_dict.get("run_to_stage", "task-g")
     plan = resolve_template_plan(template_id)
     start_hint = NODE_REGISTRY[run_from].sequence_hint
     end_hint = NODE_REGISTRY[run_to].sequence_hint
@@ -291,7 +294,7 @@ class TaskManager:
         else:
             output_root = str(CACHE_ROOT / "output-pipeline" / task_id)
 
-        config_dict = req.config.model_dump() if req.config else {}
+        config_dict = normalize_task_config(req.config.model_dump() if req.config else {})
 
         task = Task(
             id=task_id,

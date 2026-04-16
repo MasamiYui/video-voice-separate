@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from .config import (
+    DEFAULT_CONDENSE_MODE,
     DEFAULT_DEVICE,
     DEFAULT_DELIVERY_AUDIO_BITRATE,
     DEFAULT_DELIVERY_AUDIO_CODEC,
@@ -154,6 +155,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     translate_parser.add_argument("--api-model", default=None, help="Override SiliconFlow model name")
     translate_parser.add_argument("--api-base-url", default=None, help="Override SiliconFlow base URL")
+    translate_parser.add_argument(
+        "--condense-mode",
+        default=DEFAULT_CONDENSE_MODE,
+        choices=["off", "smart", "aggressive"],
+        help="LLM-based translation condensation for overflowing TTS segments",
+    )
 
     synthesize_parser = subparsers.add_parser(
         "synthesize-speaker",
@@ -313,6 +320,11 @@ def build_parser() -> argparse.ArgumentParser:
     pipeline_parser.add_argument("--registry-path", default=None)
     pipeline_parser.add_argument("--api-model", default=None)
     pipeline_parser.add_argument("--api-base-url", default=None)
+    pipeline_parser.add_argument(
+        "--condense-mode",
+        default=None,
+        choices=["off", "smart", "aggressive"],
+    )
     pipeline_parser.add_argument("--fit-policy", default=None, choices=["conservative", "high_quality"])
     pipeline_parser.add_argument("--fit-backend", default=None, choices=["atempo", "rubberband"])
     pipeline_parser.add_argument("--mix-profile", default=None, choices=["preview", "enhanced"])
@@ -482,6 +494,7 @@ def main(argv: list[str] | None = None) -> int:
             local_model=args.local_model,
             api_model=args.api_model,
             api_base_url=args.api_base_url,
+            condense_mode=args.condense_mode,
         )
         result = translate_script(request)
         print(f"translation={result.artifacts.translation_json_path}")

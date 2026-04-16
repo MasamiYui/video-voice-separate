@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from translip.translation.backend import BackendSegmentOutput
+from translip.translation.backend import BackendSegmentOutput, CondenseOutput
 from translip.translation.duration import build_duration_budget
 from translip.translation.glossary import (
     apply_glossary,
@@ -18,12 +18,26 @@ class FakeBackend:
     backend_name = "fake-backend"
     resolved_model = "fake-model"
     resolved_device = "cpu"
+    supports_condensation = False
 
     def translate_batch(self, *, items, source_lang, target_lang):
         return [
             BackendSegmentOutput(
                 segment_id=item.segment_id,
                 target_text=f"{target_lang}:{item.source_text}",
+            )
+            for item in items
+        ]
+
+
+class FakeCondenseBackend(FakeBackend):
+    supports_condensation = True
+
+    def condense_batch(self, *, items, target_lang):
+        return [
+            CondenseOutput(
+                segment_id=item.segment_id,
+                target_text=item.current_target_text[:item.max_chars] if item.max_chars < len(item.current_target_text) else item.current_target_text,
             )
             for item in items
         ]
@@ -201,3 +215,103 @@ def test_translate_script_writes_expected_artifacts(tmp_path: Path) -> None:
     assert payload["segments"][0]["glossary_matches"][0]["entry_id"] == "dubai"
     assert editable["units"][0]["segments"][0]["segment_id"] == "seg-0001"
     assert manifest["status"] == "succeeded"
+
+
+def _make_segments_payload(segments: list[dict]) -> dict:
+    return {"input": {"path": "/tmp/voice.wav"}, "segments": segments}
+
+
+def _make_profiles_payload(speakers: list[tuple[str, str]]) -> dict:
+    return {"profiles": [{"source_label": label, "speaker_id": sid} for label, sid in speakers]}
+
+
+def _write_fixtures(tmp_path: Path, *, segment_text: str = "这是一个非常非常长的句子用来测试精简功能", duration: float = 1.0):
+    segments_path = tmp_path / "segments.zh.json"
+    segments_path.write_text(
+        json.dumps(
+            _make_segments_payload([
+                {"id": "seg-0001", "start": 0.0, "end": duration, "duration": duration, "speaker_label": "SPEAKER_00", "text": segment_text, "language": "zh"},
+            ]),
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    profiles_path = tmp_path / "speaker_profiles.json"
+    profiles_path.write_text(
+        json.dumps(_make_profiles_payload([("SPEAKER_00", "spk_0000")]), ensure_ascii=False),
+        encoding="utf-8",
+    )
+    return segments_path, profiles_path
+
+
+def test_condense_mode_off_skips_condensation(tmp_path: Path) -> None:
+    segments_path, profiles_path = _write_fixtures(tmp_path)
+    result = translate_script(
+        TranslationRequest(
+            segments_path=segments_path,
+            profiles_path=profiles_path,
+            output_dir=tmp_path / "output",
+            target_lang="en",
+            condense_mode="off",
+        ),
+        backend_override=FakeCondenseBackend(),
+    )
+    payload = json.loads(result.artifacts.translation_json_path.read_text(encoding="utf-8"))
+    seg = payload["segments"][0]
+    assert seg["condense_status"] == "skipped"
+    assert seg["original_target_text"] == seg["target_text"]
+
+
+def test_condense_mode_smart_processes_risky_segments(tmp_path: Path) -> None:
+    segments_path, profiles_path = _write_fixtures(tmp_path, duration=1.0)
+    result = translate_script(
+        TranslationRequest(
+            segments_path=segments_path,
+            profiles_path=profiles_path,
+            output_dir=tmp_path / "output",
+            target_lang="en",
+            condense_mode="smart",
+        ),
+        backend_override=FakeCondenseBackend(),
+    )
+    payload = json.loads(result.artifacts.translation_json_path.read_text(encoding="utf-8"))
+    seg = payload["segments"][0]
+    fit_level = seg["duration_budget"]["fit_level"]
+    if fit_level == "risky":
+        assert seg["condense_status"] in ("condensed", "still_risky", "condense_failed")
+    else:
+        assert seg["condense_status"] == "skipped"
+
+
+def test_condense_unsupported_backend_falls_back_gracefully(tmp_path: Path) -> None:
+    segments_path, profiles_path = _write_fixtures(tmp_path)
+    result = translate_script(
+        TranslationRequest(
+            segments_path=segments_path,
+            profiles_path=profiles_path,
+            output_dir=tmp_path / "output",
+            target_lang="en",
+            condense_mode="smart",
+        ),
+        backend_override=FakeBackend(),
+    )
+    payload = json.loads(result.artifacts.translation_json_path.read_text(encoding="utf-8"))
+    seg = payload["segments"][0]
+    assert seg["condense_status"] == "skipped"
+
+
+def test_condense_payload_includes_condense_counts(tmp_path: Path) -> None:
+    segments_path, profiles_path = _write_fixtures(tmp_path)
+    result = translate_script(
+        TranslationRequest(
+            segments_path=segments_path,
+            profiles_path=profiles_path,
+            output_dir=tmp_path / "output",
+            target_lang="en",
+            condense_mode="off",
+        ),
+        backend_override=FakeBackend(),
+    )
+    payload = json.loads(result.artifacts.translation_json_path.read_text(encoding="utf-8"))
+    assert "condense_counts" in payload["stats"]
+    assert payload["backend"]["condense_mode"] == "off"

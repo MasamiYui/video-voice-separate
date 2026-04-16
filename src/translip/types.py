@@ -11,6 +11,7 @@ Device = Literal["auto", "cpu", "cuda", "mps"]
 Quality = Literal["balanced", "high"]
 TranslationBackendName = Literal["local-m2m100", "siliconflow"]
 TtsBackendName = Literal["qwen3tts"]
+CondenseMode = Literal["off", "smart", "aggressive"]
 FitPolicy = Literal["conservative", "high_quality"]
 FitBackendName = Literal["atempo", "rubberband"]
 MixProfileName = Literal["preview", "enhanced"]
@@ -254,6 +255,7 @@ class TranslationRequest:
     local_model: str = "facebook/m2m100_418M"
     api_model: str | None = None
     api_base_url: str | None = None
+    condense_mode: CondenseMode = "off"
 
     def normalized(self) -> "TranslationRequest":
         return TranslationRequest(
@@ -273,6 +275,7 @@ class TranslationRequest:
             local_model=self.local_model,
             api_model=self.api_model,
             api_base_url=self.api_base_url,
+            condense_mode=self.condense_mode,
         )
 
 
@@ -428,7 +431,7 @@ class PipelineRequest:
     tts_backend: TtsBackendName = "qwen3tts"
     device: Device = "auto"
     run_from_stage: PipelineStageName = "stage1"
-    run_to_stage: PipelineStageName = "task-e"
+    run_to_stage: PipelineStageName = "task-g"
     resume: bool = False
     force_stages: list[PipelineStageName] | None = None
     reuse_existing: bool = True
@@ -439,6 +442,7 @@ class PipelineRequest:
     registry_path: Path | str | None = None
     api_model: str | None = None
     api_base_url: str | None = None
+    condense_mode: CondenseMode = "off"
     fit_policy: FitPolicy = "conservative"
     fit_backend: FitBackendName = "atempo"
     mix_profile: MixProfileName = "preview"
@@ -504,6 +508,7 @@ class PipelineRequest:
             ),
             api_model=self.api_model,
             api_base_url=self.api_base_url,
+            condense_mode=self.condense_mode,
             fit_policy=self.fit_policy,
             fit_backend=self.fit_backend,
             mix_profile=self.mix_profile,

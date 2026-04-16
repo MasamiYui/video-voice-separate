@@ -40,6 +40,7 @@ def _load_m2m100(model_name: str, device: str) -> tuple[M2M100Tokenizer, M2M100F
 
 class M2M100Backend:
     backend_name = "local-m2m100"
+    supports_condensation = False
 
     def __init__(self, *, model_name: str, requested_device: str) -> None:
         self.model_name = model_name

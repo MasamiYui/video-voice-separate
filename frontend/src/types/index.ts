@@ -68,6 +68,7 @@ export interface TaskConfig {
   translation_batch_size: number
   siliconflow_base_url?: string
   siliconflow_model?: string
+  condense_mode?: string
   tts_backend: string
   max_segments?: number
   fit_policy: string

@@ -70,7 +70,7 @@ class TaskConfigInput(BaseModel):
     device: str = "auto"
     template: str = "asr-dub-basic"
     run_from_stage: str = "stage1"
-    run_to_stage: str = "task-e"
+    run_to_stage: str = "task-g"
     use_cache: bool = True
     keep_intermediate: bool = False
     video_source: str = "original"
@@ -95,6 +95,7 @@ class TaskConfigInput(BaseModel):
     translation_batch_size: int = 4
     siliconflow_base_url: Optional[str] = None
     siliconflow_model: Optional[str] = None
+    condense_mode: str = "off"
     # Task D
     tts_backend: str = "qwen3tts"
     max_segments: Optional[int] = None
