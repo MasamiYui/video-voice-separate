@@ -30,6 +30,7 @@ const defaultConfig: Partial<TaskConfig> = {
   top_k: 3,
   translation_backend: 'local-m2m100',
   translation_batch_size: 4,
+  condense_mode: 'off',
   tts_backend: 'qwen3tts',
   fit_policy: 'conservative',
   fit_backend: 'atempo',
@@ -446,6 +447,17 @@ export function NewTaskPage() {
             </Field>
           </div>
         )}
+        <Field label={t.newTask.fields.condenseMode}>
+          <Select
+            value={config.condense_mode ?? 'off'}
+            onChange={value => patchConfig({ condense_mode: value })}
+            options={[
+              { value: 'off', label: t.newTask.options.condenseMode.off },
+              { value: 'smart', label: t.newTask.options.condenseMode.smart },
+              { value: 'aggressive', label: t.newTask.options.condenseMode.aggressive },
+            ]}
+          />
+        </Field>
       </SectionCard>
 
       <SectionCard title={t.newTask.sections.taskD}>

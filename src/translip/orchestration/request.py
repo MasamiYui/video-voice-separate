@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from ..config import (
+    DEFAULT_CONDENSE_MODE,
     DEFAULT_DEVICE,
     DEFAULT_DUBBING_BACKEND,
     DEFAULT_PIPELINE_OUTPUT_ROOT,
@@ -79,6 +80,7 @@ def build_pipeline_request(raw: dict[str, Any]) -> PipelineRequest:
         registry_path=merged.get("registry_path") or merged.get("registry"),
         api_model=merged.get("api_model"),
         api_base_url=merged.get("api_base_url"),
+        condense_mode=merged.get("condense_mode", DEFAULT_CONDENSE_MODE),
         fit_policy=merged.get("fit_policy", DEFAULT_RENDER_FIT_POLICY),
         fit_backend=merged.get("fit_backend", DEFAULT_RENDER_FIT_BACKEND),
         mix_profile=merged.get("mix_profile", DEFAULT_RENDER_MIX_PROFILE),

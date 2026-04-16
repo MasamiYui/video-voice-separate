@@ -130,6 +130,7 @@ def _stage_cache_payload(request: PipelineRequest, stage_name: str) -> dict[str,
                 "glossary_path": str(request.glossary_path) if request.glossary_path else None,
                 "api_model": request.api_model,
                 "api_base_url": request.api_base_url,
+                "condense_mode": request.condense_mode,
             }
         )
     elif stage_name == "task-d":

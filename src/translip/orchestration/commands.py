@@ -189,6 +189,8 @@ def build_task_c_command(request: PipelineRequest) -> list[str]:
         request.translation_backend,
         "--device",
         request.device,
+        "--condense-mode",
+        request.condense_mode,
     ]
     if request.glossary_path is not None:
         command.extend(["--glossary", str(request.glossary_path)])

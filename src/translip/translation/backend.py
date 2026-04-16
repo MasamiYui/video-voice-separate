@@ -61,10 +61,30 @@ class BackendSegmentOutput:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass(slots=True)
+class CondenseInput:
+    segment_id: str
+    source_text: str
+    current_target_text: str
+    target_duration_sec: float
+    current_estimated_sec: float
+    max_chars: int
+    protected_terms: list[str] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class CondenseOutput:
+    segment_id: str
+    target_text: str
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
 class TranslationBackend(Protocol):
     backend_name: str
     resolved_model: str
     resolved_device: str | None
+    supports_condensation: bool
 
     def translate_batch(
         self,

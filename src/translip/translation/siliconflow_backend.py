@@ -8,11 +8,18 @@ from typing import Any
 
 from ..config import DEFAULT_SILICONFLOW_BASE_URL, DEFAULT_SILICONFLOW_MODEL
 from ..exceptions import BackendUnavailableError
-from .backend import BackendSegmentInput, BackendSegmentOutput, canonical_language_code
+from .backend import (
+    BackendSegmentInput,
+    BackendSegmentOutput,
+    CondenseInput,
+    CondenseOutput,
+    canonical_language_code,
+)
 
 
 class SiliconFlowBackend:
     backend_name = "siliconflow"
+    supports_condensation = True
 
     def __init__(
         self,
@@ -49,6 +56,22 @@ class SiliconFlowBackend:
             except Exception as exc:
                 last_error = exc
         raise BackendUnavailableError(f"SiliconFlow translation failed: {last_error}") from last_error
+
+    def condense_batch(
+        self,
+        *,
+        items: list[CondenseInput],
+        target_lang: str,
+    ) -> list[CondenseOutput]:
+        if not items:
+            return []
+        last_error: Exception | None = None
+        for _attempt in range(self.max_retries + 1):
+            try:
+                return self._condense_once(items=items, target_lang=target_lang)
+            except Exception as exc:
+                last_error = exc
+        raise BackendUnavailableError(f"SiliconFlow condensation failed: {last_error}") from last_error
 
     def _translate_once(
         self,
@@ -112,6 +135,76 @@ class SiliconFlowBackend:
             if not target_text:
                 raise BackendUnavailableError(f"Missing translation for segment {item.segment_id}")
             outputs.append(BackendSegmentOutput(segment_id=item.segment_id, target_text=target_text))
+        return outputs
+
+    def _condense_once(
+        self,
+        *,
+        items: list[CondenseInput],
+        target_lang: str,
+    ) -> list[CondenseOutput]:
+        payload = {
+            "model": self.model_name,
+            "temperature": 0,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "You condense dubbing translations so they fit an audio duration budget. "
+                        "You MUST preserve: proper nouns, named entities, numerical values, dates, "
+                        "protected glossary terms (listed per segment), and emotional tone. "
+                        "Only remove filler words, redundant modifiers, or restructure for brevity. "
+                        "Never add information that was not in current_target_text. "
+                        "Never translate from scratch — only tighten the given target text. "
+                        "Aim for the character budget (max_chars) but prioritize naturalness. "
+                        "Return valid JSON with a top-level key named segments."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": json.dumps(
+                        {
+                            "task": "condense_segments",
+                            "target_lang": canonical_language_code(target_lang),
+                            "segments": [
+                                {
+                                    "segment_id": item.segment_id,
+                                    "source_text": item.source_text,
+                                    "current_target_text": item.current_target_text,
+                                    "target_duration_sec": round(item.target_duration_sec, 2),
+                                    "current_estimated_duration_sec": round(item.current_estimated_sec, 2),
+                                    "max_chars": item.max_chars,
+                                    "protected_terms": item.protected_terms,
+                                }
+                                for item in items
+                            ],
+                            "output_schema": {
+                                "segments": [{"segment_id": "string", "target_text": "string"}]
+                            },
+                        },
+                        ensure_ascii=False,
+                    ),
+                },
+            ],
+            "response_format": {"type": "json_object"},
+        }
+        response = self._post_json(f"{self.base_url}/chat/completions", payload)
+        content = _extract_message_content(response)
+        parsed = _parse_json_payload(content)
+        raw_segments = parsed.get("segments")
+        if not isinstance(raw_segments, list):
+            raise BackendUnavailableError("SiliconFlow condense response missing segments array")
+        mapping = {
+            str(item["segment_id"]): str(item["target_text"]).strip()
+            for item in raw_segments
+            if isinstance(item, dict) and "segment_id" in item and "target_text" in item
+        }
+        outputs: list[CondenseOutput] = []
+        for item in items:
+            target_text = mapping.get(item.segment_id)
+            if not target_text:
+                raise BackendUnavailableError(f"Missing condensation for segment {item.segment_id}")
+            outputs.append(CondenseOutput(segment_id=item.segment_id, target_text=target_text))
         return outputs
 
     def _post_json(self, url: str, payload: dict[str, Any]) -> dict[str, Any]:

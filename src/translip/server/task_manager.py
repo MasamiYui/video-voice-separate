@@ -60,6 +60,7 @@ def _build_pipeline_request(task: Task) -> PipelineRequest:
         background_gain_db=cfg.get("background_gain_db", -8.0),
         api_base_url=cfg.get("siliconflow_base_url"),
         api_model=cfg.get("siliconflow_model"),
+        condense_mode=cfg.get("condense_mode", "off"),
         glossary_path=cfg.get("translation_glossary"),
         registry_path=cfg.get("existing_registry"),
     )

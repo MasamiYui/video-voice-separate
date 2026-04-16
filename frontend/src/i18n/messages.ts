@@ -95,6 +95,7 @@ const zhMessages = {
       translationBackend: '翻译后端',
       apiBaseUrl: 'API Base URL',
       apiModel: 'API Model',
+      condenseMode: '译文精简',
       ttsBackend: 'TTS 后端',
       fitPolicy: '贴合策略',
       mixProfile: '混音配置',
@@ -152,6 +153,11 @@ const zhMessages = {
       fitPolicy: {
         conservative: '保守',
         high_quality: '高质量',
+      },
+      condenseMode: {
+        off: '关闭',
+        smart: '智能（仅精简严重超时段）',
+        aggressive: '积极（精简所有超时段）',
       },
       mixProfile: {
         preview: '预览',
@@ -495,6 +501,7 @@ const enMessages: LocaleMessages = {
       translationBackend: 'Translation Backend',
       apiBaseUrl: 'API Base URL',
       apiModel: 'API Model',
+      condenseMode: 'Text Condensation',
       ttsBackend: 'TTS Backend',
       fitPolicy: 'Fit Policy',
       mixProfile: 'Mix Profile',
@@ -552,6 +559,11 @@ const enMessages: LocaleMessages = {
       fitPolicy: {
         conservative: 'Conservative',
         high_quality: 'High Quality',
+      },
+      condenseMode: {
+        off: 'Off',
+        smart: 'Smart (risky segments only)',
+        aggressive: 'Aggressive (all overflowing)',
       },
       mixProfile: {
         preview: 'Preview',

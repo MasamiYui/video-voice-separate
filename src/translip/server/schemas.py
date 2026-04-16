@@ -95,6 +95,7 @@ class TaskConfigInput(BaseModel):
     translation_batch_size: int = 4
     siliconflow_base_url: Optional[str] = None
     siliconflow_model: Optional[str] = None
+    condense_mode: str = "off"
     # Task D
     tts_backend: str = "qwen3tts"
     max_segments: Optional[int] = None
