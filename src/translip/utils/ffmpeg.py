@@ -46,12 +46,37 @@ def ffmpeg_binary() -> str:
     return _resolve_binary("ffmpeg")
 
 
+def ffmpeg_binary_with_libass() -> str:
+    env = os.environ.get("FFMPEG_BINARY")
+    if env:
+        return env
+    try:
+        imageio_path = get_ffmpeg_exe()
+        result = subprocess.run(
+            [imageio_path, "-filters"],
+            capture_output=True, text=True,
+        )
+        if "ass" in result.stdout:
+            return imageio_path
+    except Exception:
+        pass
+    return _resolve_binary("ffmpeg")
+
+
 def ffprobe_binary() -> str:
     return _resolve_binary("ffprobe")
 
 
 def run_ffmpeg(args: list[str]) -> subprocess.CompletedProcess[str]:
     command = [ffmpeg_binary(), *args]
+    result = subprocess.run(command, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise FFmpegError(result.stderr.strip() or "ffmpeg failed")
+    return result
+
+
+def _run_ffmpeg_with_libass(args: list[str]) -> subprocess.CompletedProcess[str]:
+    command = [ffmpeg_binary_with_libass(), *args]
     result = subprocess.run(command, capture_output=True, text=True)
     if result.returncode != 0:
         raise FFmpegError(result.stderr.strip() or "ffmpeg failed")
@@ -228,4 +253,96 @@ def mux_video_with_audio(
         raise FFmpegError(f"Unsupported end policy: {end_policy}")
     args.extend(["-movflags", "+faststart", str(output_path)])
     run_ffmpeg(args)
+    return output_path
+
+
+def probe_video_resolution(path: Path) -> tuple[int, int]:
+    payload = run_ffprobe_json(path)
+    for stream in payload.get("streams", []):
+        if stream.get("codec_type") == "video":
+            width = int(stream.get("width", 0))
+            height = int(stream.get("height", 0))
+            if width > 0 and height > 0:
+                return width, height
+    raise FFmpegError(f"No video stream found in {path}")
+
+
+def burn_subtitle_and_mux(
+    *,
+    input_video_path: Path,
+    input_audio_path: Path,
+    subtitle_path: Path,
+    output_path: Path,
+    video_codec: str = "libx264",
+    audio_codec: str = "aac",
+    audio_bitrate: str | None = None,
+    end_policy: str = "trim_audio_to_video",
+    crf: int = 18,
+    preset: str = "medium",
+) -> Path:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    vf = f"ass={subtitle_path}"
+    args = [
+        "-y",
+        "-i",
+        str(input_video_path),
+        "-i",
+        str(input_audio_path),
+        "-map",
+        "0:v:0",
+        "-map",
+        "1:a:0",
+        "-vf",
+        vf,
+        "-c:v",
+        video_codec,
+    ]
+    if video_codec == "libx264":
+        args.extend(["-crf", str(crf), "-preset", preset])
+    args.extend(["-c:a", audio_codec])
+    if audio_bitrate:
+        args.extend(["-b:a", audio_bitrate])
+    if end_policy == "trim_audio_to_video":
+        args.extend(["-shortest"])
+    args.extend(["-movflags", "+faststart", str(output_path)])
+    _run_ffmpeg_with_libass(args)
+    return output_path
+
+
+def burn_subtitle_preview(
+    *,
+    input_video_path: Path,
+    subtitle_path: Path,
+    output_path: Path,
+    start_sec: float,
+    duration_sec: float = 10.0,
+    video_codec: str = "libx264",
+    crf: int = 20,
+    preset: str = "fast",
+) -> Path:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    vf = f"ass={subtitle_path}"
+    args = [
+        "-y",
+        "-ss",
+        str(start_sec),
+        "-i",
+        str(input_video_path),
+        "-t",
+        str(duration_sec),
+        "-vf",
+        vf,
+        "-c:v",
+        video_codec,
+        "-crf",
+        str(crf),
+        "-preset",
+        preset,
+        "-c:a",
+        "aac",
+        "-movflags",
+        "+faststart",
+        str(output_path),
+    ]
+    _run_ffmpeg_with_libass(args)
     return output_path

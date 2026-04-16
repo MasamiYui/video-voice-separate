@@ -12,6 +12,7 @@ from .database import init_db
 from .routes.artifacts import router as artifacts_router
 from .routes.atomic_tools import router as atomic_tools_router
 from .routes.config import router as config_router
+from .routes.delivery import router as delivery_router
 from .routes.progress import router as progress_router
 from .routes.system import router as system_router
 from .routes.tasks import router as tasks_router
@@ -50,6 +51,7 @@ def startup_event():
 app.include_router(tasks_router)
 app.include_router(progress_router)
 app.include_router(config_router)
+app.include_router(delivery_router)
 app.include_router(system_router)
 app.include_router(artifacts_router)
 app.include_router(atomic_tools_router)
