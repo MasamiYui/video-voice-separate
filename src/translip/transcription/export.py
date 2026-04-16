@@ -113,6 +113,12 @@ def build_transcription_manifest(
             "asr_model": request.asr_model,
             "device": request.device,
             "write_srt": request.write_srt,
+            "vad_filter": request.vad_filter,
+            "vad_min_silence_duration_ms": request.vad_min_silence_duration_ms,
+            "beam_size": request.beam_size,
+            "best_of": request.best_of,
+            "temperature": request.temperature,
+            "condition_on_previous_text": request.condition_on_previous_text,
         },
         "resolved": {
             "asr_backend": metadata.get("asr_backend"),

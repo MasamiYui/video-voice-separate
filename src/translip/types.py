@@ -149,6 +149,12 @@ class TranscriptionRequest:
     audio_stream_index: int = 0
     keep_intermediate: bool = False
     write_srt: bool = True
+    vad_filter: bool = True
+    vad_min_silence_duration_ms: int = 400
+    beam_size: int = 5
+    best_of: int = 5
+    temperature: float = 0.0
+    condition_on_previous_text: bool = False
 
     def normalized(self) -> "TranscriptionRequest":
         return TranscriptionRequest(
@@ -160,6 +166,12 @@ class TranscriptionRequest:
             audio_stream_index=self.audio_stream_index,
             keep_intermediate=self.keep_intermediate,
             write_srt=self.write_srt,
+            vad_filter=self.vad_filter,
+            vad_min_silence_duration_ms=int(self.vad_min_silence_duration_ms),
+            beam_size=int(self.beam_size),
+            best_of=int(self.best_of),
+            temperature=float(self.temperature),
+            condition_on_previous_text=self.condition_on_previous_text,
         )
 
 

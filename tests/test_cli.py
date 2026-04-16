@@ -47,7 +47,28 @@ def test_cli_transcribe_parser() -> None:
     assert args.no_srt is True
 
 
-def test_cli_build_speaker_registry_parser() -> None:
+def test_cli_benchmark_transcription_parser() -> None:
+    parser = build_parser()
+    args = parser.parse_args(
+        [
+            "benchmark-transcription",
+            "--input",
+            "sample.mp4",
+            "--reference-srt",
+            "sample.srt",
+            "--output-dir",
+            "benchmark-output",
+            "--asr-model",
+            "medium",
+        ]
+    )
+    assert args.command == "benchmark-transcription"
+    assert args.input == "sample.mp4"
+    assert args.reference_srt == "sample.srt"
+    assert args.output_dir == "benchmark-output"
+    assert args.asr_model == "medium"
+
+
     parser = build_parser()
     args = parser.parse_args(
         [

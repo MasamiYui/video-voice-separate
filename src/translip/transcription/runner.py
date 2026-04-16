@@ -6,7 +6,7 @@ from pathlib import Path
 
 from ..exceptions import TranslipError
 from ..pipeline.ingest import prepare_transcription_audio
-from ..transcription.asr import transcribe_audio
+from ..transcription.asr import AsrOptions, transcribe_audio
 from ..transcription.export import (
     build_transcription_manifest,
     now_iso,
@@ -60,6 +60,14 @@ def transcribe_file(
             model_name=normalized_request.asr_model,
             language=normalized_request.language,
             requested_device=normalized_request.device,
+            options=AsrOptions(
+                vad_filter=normalized_request.vad_filter,
+                vad_min_silence_duration_ms=normalized_request.vad_min_silence_duration_ms,
+                beam_size=normalized_request.beam_size,
+                best_of=normalized_request.best_of,
+                temperature=normalized_request.temperature,
+                condition_on_previous_text=normalized_request.condition_on_previous_text,
+            ),
         )
         speaker_labels, speaker_metadata = assign_speaker_labels(
             working_audio,
