@@ -4,6 +4,11 @@
 .venv/
 __pycache__/
 *.pyc
+node_modules/
+.claude/
+.codex-runtime/
+.playwright-cli/
+.playwright-mcp/
 output/
 output-task-a/
 output-task-b/
