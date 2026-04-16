@@ -43,7 +43,7 @@ from .rendering.runner import render_dub
 from .speakers.runner import build_speaker_registry
 from .subtitles.preview import SubtitlePreviewRequest, preview_subtitle
 from .translation.runner import translate_script
-from .transcription.runner import transcribe_file
+from .transcription import benchmark_transcription_runs, build_phase1_benchmark_runs, transcribe_file
 from .types import (
     DubbingRequest,
     ExportVideoRequest,
@@ -111,6 +111,26 @@ def build_parser() -> argparse.ArgumentParser:
     transcribe_parser.add_argument("--audio-stream-index", type=int, default=0)
     transcribe_parser.add_argument("--keep-intermediate", action="store_true")
     transcribe_parser.add_argument("--no-srt", action="store_true")
+
+    benchmark_parser = subparsers.add_parser(
+        "benchmark-transcription",
+        help="Run Task A transcription benchmark against a reference SRT",
+    )
+    benchmark_parser.add_argument("--input", required=True, help="Input media file path")
+    benchmark_parser.add_argument("--reference-srt", required=True, help="Reference subtitle SRT path")
+    benchmark_parser.add_argument("--output-dir", default="output-benchmark-transcription", help="Output directory")
+    benchmark_parser.add_argument(
+        "--language",
+        default=DEFAULT_TRANSCRIPTION_LANGUAGE,
+        help="Language hint for ASR, e.g. zh",
+    )
+    benchmark_parser.add_argument(
+        "--asr-model",
+        default=DEFAULT_TRANSCRIPTION_ASR_MODEL,
+        help="Base faster-whisper model name for the phase 1 sweep",
+    )
+    benchmark_parser.add_argument("--device", default=DEFAULT_DEVICE, choices=["auto", "cpu", "cuda", "mps"])
+    benchmark_parser.add_argument("--audio-stream-index", type=int, default=0)
 
     speaker_parser = subparsers.add_parser(
         "build-speaker-registry",
@@ -520,7 +540,28 @@ def main(argv: list[str] | None = None) -> int:
         print(f"manifest={result.artifacts.manifest_path}")
         return 0
 
-    if args.command == "build-speaker-registry":
+    if args.command == "benchmark-transcription":
+        media_path = Path(args.input).expanduser().resolve()
+        reference_srt_path = Path(args.reference_srt).expanduser().resolve()
+        output_dir = Path(args.output_dir).expanduser().resolve()
+        runs = build_phase1_benchmark_runs(
+            media_path=media_path,
+            output_root=output_dir / "runs",
+            language=args.language,
+            model_name=args.asr_model,
+            device=args.device,
+            audio_stream_index=args.audio_stream_index,
+        )
+        result = benchmark_transcription_runs(
+            media_path=media_path,
+            reference_srt_path=reference_srt_path,
+            output_dir=output_dir,
+            runs=runs,
+        )
+        print(f"summary={result.artifacts.summary_path}")
+        print(f"best_run={result.summary.get('best_run')}")
+        return 0
+
         request = SpeakerRegistryRequest(
             segments_path=args.segments,
             audio_path=args.audio,

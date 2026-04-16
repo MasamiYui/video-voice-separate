@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from functools import lru_cache
 from pathlib import Path
 
@@ -22,6 +22,19 @@ class AsrSegment:
     @property
     def duration(self) -> float:
         return max(0.0, self.end - self.start)
+
+
+@dataclass(slots=True)
+class AsrOptions:
+    vad_filter: bool = True
+    vad_min_silence_duration_ms: int = 400
+    beam_size: int = 5
+    best_of: int = 5
+    temperature: float = 0.0
+    condition_on_previous_text: bool = False
+
+    def metadata(self) -> dict[str, bool | int | float]:
+        return asdict(self)
 
 
 def resolve_asr_device(requested_device: str) -> str:
@@ -53,19 +66,28 @@ def transcribe_audio(
     model_name: str,
     language: str,
     requested_device: str,
-) -> tuple[list[AsrSegment], dict[str, str | float | int]]:
+    options: AsrOptions | None = None,
+) -> tuple[list[AsrSegment], dict[str, str | float | int | bool]]:
     device = resolve_asr_device(requested_device)
     model = _load_model(model_name, device, _compute_type(device))
+    resolved_options = options or AsrOptions()
+
+    transcribe_kwargs: dict[str, object] = {
+        "language": language or None,
+        "vad_filter": resolved_options.vad_filter,
+        "beam_size": resolved_options.beam_size,
+        "best_of": resolved_options.best_of,
+        "temperature": resolved_options.temperature,
+        "condition_on_previous_text": resolved_options.condition_on_previous_text,
+    }
+    if resolved_options.vad_filter:
+        transcribe_kwargs["vad_parameters"] = {
+            "min_silence_duration_ms": resolved_options.vad_min_silence_duration_ms,
+        }
 
     segments_iter, info = model.transcribe(
         str(audio_path),
-        language=language or None,
-        vad_filter=True,
-        beam_size=5,
-        best_of=5,
-        temperature=0.0,
-        condition_on_previous_text=False,
-        vad_parameters={"min_silence_duration_ms": 400},
+        **transcribe_kwargs,
     )
 
     detected_language = info.language or language or "unknown"
@@ -86,11 +108,12 @@ def transcribe_audio(
             )
         )
 
-    metadata: dict[str, str | float | int] = {
+    metadata: dict[str, str | float | int | bool] = {
         "asr_backend": "faster-whisper",
         "asr_model": model_name,
         "asr_device": device,
         "detected_language": detected_language,
         "segment_count": len(segments),
+        **resolved_options.metadata(),
     }
     return segments, metadata
