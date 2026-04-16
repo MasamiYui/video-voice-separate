@@ -1,6 +1,39 @@
 import api from './client'
 import type { CreateTaskRequest, Task, TaskListResponse, WorkflowGraph } from '../types'
 
+export type SubtitlePreviewPayload = {
+  input_video_path: string
+  subtitle_path: string
+  output_path?: string
+  font_family: string
+  font_size: number
+  primary_color: string
+  outline_color: string
+  outline_width: number
+  position: 'top' | 'bottom'
+  margin_v: number
+  bold: boolean
+  start_sec?: number
+  duration_sec: number
+}
+
+export type DeliveryComposePayload = {
+  subtitle_mode: 'none' | 'chinese_only' | 'english_only' | 'bilingual'
+  subtitle_source: 'ocr' | 'asr'
+  font_family: string
+  font_size: number
+  primary_color: string
+  outline_color: string
+  outline_width: number
+  position: 'top' | 'bottom'
+  margin_v: number
+  bold: boolean
+  bilingual_chinese_position: 'top' | 'bottom'
+  bilingual_english_position: 'top' | 'bottom'
+  export_preview: boolean
+  export_dub: boolean
+}
+
 export const tasksApi = {
   list: (params?: {
     status?: string
@@ -41,4 +74,10 @@ export const tasksApi = {
 
   getDelivery: (id: string) =>
     api.get(`/api/tasks/${id}/delivery`).then(r => r.data),
+
+  createSubtitlePreview: (id: string, payload: SubtitlePreviewPayload) =>
+    api.post(`/api/tasks/${id}/subtitle-preview`, payload).then(r => r.data),
+
+  composeDelivery: (id: string, payload: DeliveryComposePayload) =>
+    api.post(`/api/tasks/${id}/delivery-compose`, payload).then(r => r.data),
 }

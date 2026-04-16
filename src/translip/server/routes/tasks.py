@@ -65,8 +65,9 @@ def _task_to_read(task: Task, stages: list[TaskStage]) -> TaskRead:
 
 def _task_graph_payload_from_db(task: Task, stages: list[TaskStage]) -> dict:
     config = normalize_task_config(task.config)
+    template_id = config.get("template", "asr-dub-basic")
     return {
-        "template_id": config.get("template", "asr-dub-basic"),
+        "template_id": template_id,
         "status": task.status,
         "nodes": [
             {
@@ -241,6 +242,8 @@ def get_task_graph(task_id: str, session: Session = Depends(get_session)):
         manifest_path = Path(task.output_root) / "pipeline-manifest.json"
     if manifest_path.exists():
         payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if "template_id" not in payload:
+            payload = _task_graph_payload_from_db(task, stages)
     else:
         payload = _task_graph_payload_from_db(task, stages)
     return build_workflow_graph_payload(payload)

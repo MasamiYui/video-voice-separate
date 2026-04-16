@@ -46,12 +46,37 @@ def ffmpeg_binary() -> str:
     return _resolve_binary("ffmpeg")
 
 
+def ffmpeg_binary_with_libass() -> str:
+    env = os.environ.get("FFMPEG_BINARY")
+    if env:
+        return env
+    try:
+        imageio_path = get_ffmpeg_exe()
+        result = subprocess.run(
+            [imageio_path, "-filters"],
+            capture_output=True, text=True,
+        )
+        if "ass" in result.stdout:
+            return imageio_path
+    except Exception:
+        pass
+    return _resolve_binary("ffmpeg")
+
+
 def ffprobe_binary() -> str:
     return _resolve_binary("ffprobe")
 
 
 def run_ffmpeg(args: list[str]) -> subprocess.CompletedProcess[str]:
     command = [ffmpeg_binary(), *args]
+    result = subprocess.run(command, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise FFmpegError(result.stderr.strip() or "ffmpeg failed")
+    return result
+
+
+def _run_ffmpeg_with_libass(args: list[str]) -> subprocess.CompletedProcess[str]:
+    command = [ffmpeg_binary_with_libass(), *args]
     result = subprocess.run(command, capture_output=True, text=True)
     if result.returncode != 0:
         raise FFmpegError(result.stderr.strip() or "ffmpeg failed")
@@ -256,8 +281,7 @@ def burn_subtitle_and_mux(
     preset: str = "medium",
 ) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    escaped_sub = str(subtitle_path).replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
-    vf = f"ass={escaped_sub}"
+    vf = f"ass={subtitle_path}"
     args = [
         "-y",
         "-i",
@@ -281,7 +305,7 @@ def burn_subtitle_and_mux(
     if end_policy == "trim_audio_to_video":
         args.extend(["-shortest"])
     args.extend(["-movflags", "+faststart", str(output_path)])
-    run_ffmpeg(args)
+    _run_ffmpeg_with_libass(args)
     return output_path
 
 
@@ -297,8 +321,7 @@ def burn_subtitle_preview(
     preset: str = "fast",
 ) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    escaped_sub = str(subtitle_path).replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
-    vf = f"ass={escaped_sub}"
+    vf = f"ass={subtitle_path}"
     args = [
         "-y",
         "-ss",
@@ -321,5 +344,5 @@ def burn_subtitle_preview(
         "+faststart",
         str(output_path),
     ]
-    run_ffmpeg(args)
+    _run_ffmpeg_with_libass(args)
     return output_path

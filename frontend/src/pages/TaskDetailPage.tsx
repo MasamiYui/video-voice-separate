@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Download, RotateCcw, Sparkles, Square, Trash2 } from 'lucide-react'
+import { ArrowLeft, Download, PlayCircle, RotateCcw, Sparkles, Square, Trash2, Wand2 } from 'lucide-react'
 import { tasksApi } from '../api/tasks'
 import { PageContainer } from '../components/layout/PageContainer'
 import { PipelineGraph } from '../components/pipeline/PipelineGraph'
@@ -36,6 +36,17 @@ export function TaskDetailPage() {
   const queryClient = useQueryClient()
   const [selectedNodeId, setSelectedNodeId] = useState<string | null | undefined>(undefined)
   const [rerunStage, setRerunStage] = useState<string | undefined>(undefined)
+  const [subtitleMode, setSubtitleMode] = useState<'none' | 'chinese_only' | 'english_only' | 'bilingual'>('none')
+  const [subtitleSource, setSubtitleSource] = useState<'ocr' | 'asr'>('ocr')
+  const [fontFamily, setFontFamily] = useState('Noto Sans')
+  const [fontSize, setFontSize] = useState(0)
+  const [subtitlePosition, setSubtitlePosition] = useState<'top' | 'bottom'>('bottom')
+  const [marginV, setMarginV] = useState(0)
+  const [subtitleColor, setSubtitleColor] = useState('#FFFFFF')
+  const [outlineColor, setOutlineColor] = useState('#000000')
+  const [outlineWidth, setOutlineWidth] = useState(2)
+  const [subtitleBold, setSubtitleBold] = useState(false)
+  const [previewPathOverride, setPreviewPathOverride] = useState<string>('')
 
   const { data: task, refetch } = useQuery({
     queryKey: ['task', id],
@@ -88,6 +99,59 @@ export function TaskDetailPage() {
     },
   })
 
+  const previewMutation = useMutation({
+    mutationFn: (payload: Parameters<typeof tasksApi.createSubtitlePreview>[1]) => tasksApi.createSubtitlePreview(id!, payload),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['artifacts', id] }),
+  })
+
+  const composeMutation = useMutation({
+    mutationFn: (payload: Parameters<typeof tasksApi.composeDelivery>[1]) => tasksApi.composeDelivery(id!, payload),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['artifacts', id] }),
+  })
+
+  const elapsedSec = task?.elapsed_sec
+  const artifacts: Artifact[] = artifactsData?.artifacts ?? []
+  const activeStageId = resolveActiveStageId(selectedNodeId, task?.current_stage, graph)
+  const effectiveRerunStage = resolveRerunStage(rerunStage, task?.current_stage, graph)
+  const selectedNode = graph?.nodes.find(node => node.id === activeStageId) ?? null
+  const selectedStage = activeStageId && task
+    ? task.stages.find(stage => stage.stage_name === activeStageId) ?? null
+    : null
+  const isUserArtifact = (a: Artifact) => !a.path.endsWith('.ass') && !a.path.includes('.delivery-subtitles/')
+  const selectedArtifacts = selectedNode
+    ? artifacts.filter(artifact => (ARTIFACT_PREFIX[selectedNode.id] ?? []).some(prefix => artifact.path.startsWith(prefix)) && isUserArtifact(artifact))
+    : []
+
+  const deliveryPolicy = [
+    task?.config.video_source,
+    task?.config.audio_source,
+    task?.config.subtitle_source,
+  ].filter(Boolean).join(' · ')
+
+  const preferredSubtitlePath = useMemo(() => {
+    const targetLang = task?.target_lang ?? 'en'
+    const candidates = subtitleSource === 'ocr'
+      ? [
+          'ocr-translate/ocr_subtitles.en.srt',
+          `ocr-translate/ocr_subtitles.${targetLang}.srt`,
+        ]
+      : [
+          `task-c/voice/translation.${targetLang}.srt`,
+          `task-c/translation.${targetLang}.srt`,
+        ]
+    return artifacts.find(artifact => candidates.some(candidate => artifact.path.endsWith(candidate)))?.path ?? ''
+  }, [artifacts, subtitleSource, task?.target_lang])
+
+  const previewTargetPath = previewPathOverride || preferredSubtitlePath
+
+  const previewVideoArtifact = useMemo(
+    () => artifacts.find(artifact => artifact.path.endsWith('subtitle-preview.mp4')) ?? null,
+    [artifacts],
+  )
+
+  const previewFiles = artifacts.filter(artifact => isUserArtifact(artifact) && (artifact.path.startsWith('task-g/') || artifact.path.startsWith('delivery/'))).slice(0, 4)
+  const finalVideoArtifacts = previewFiles.filter(artifact => artifact.suffix === '.mp4')
+
   if (!task) {
     return (
       <PageContainer className="max-w-4xl py-20 text-center text-slate-400">
@@ -95,26 +159,6 @@ export function TaskDetailPage() {
       </PageContainer>
     )
   }
-
-  const elapsedSec = task.elapsed_sec
-  const artifacts: Artifact[] = artifactsData?.artifacts ?? []
-  const activeStageId = resolveActiveStageId(selectedNodeId, task.current_stage, graph)
-  const effectiveRerunStage = resolveRerunStage(rerunStage, task.current_stage, graph)
-  const selectedNode = graph?.nodes.find(node => node.id === activeStageId) ?? null
-  const selectedStage = activeStageId
-    ? task.stages.find(stage => stage.stage_name === activeStageId) ?? null
-    : null
-  const selectedArtifacts = selectedNode
-    ? artifacts.filter(artifact => (ARTIFACT_PREFIX[selectedNode.id] ?? []).some(prefix => artifact.path.startsWith(prefix)))
-    : []
-
-  const deliveryPolicy = [
-    task.config.video_source,
-    task.config.audio_source,
-    task.config.subtitle_source,
-  ].filter(Boolean).join(' · ')
-
-  const previewFiles = artifacts.filter(artifact => artifact.path.startsWith('task-g/') || artifact.path.startsWith('delivery/')).slice(0, 4)
 
   return (
     <PageContainer className="max-w-6xl">
@@ -218,6 +262,131 @@ export function TaskDetailPage() {
               showLegend
             />
           )}
+        </div>
+
+        {/* ── Delivery composer ── */}
+        <div className="border-b border-slate-100 px-7 py-6">
+          <div className="mb-4 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-widest text-slate-400">
+            <Wand2 size={12} />
+            Delivery Composer
+          </div>
+          <div className="grid gap-6 lg:grid-cols-[1.25fr_0.95fr]">
+            <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-5 shadow-sm">
+              <div className="grid gap-4 md:grid-cols-2">
+                <ComposerField label="字幕模式">
+                  <select value={subtitleMode} onChange={event => setSubtitleMode(event.target.value as typeof subtitleMode)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">
+                    <option value="none">不压字幕</option>
+                    <option value="chinese_only">仅中文</option>
+                    <option value="english_only">仅英文（擦中文）</option>
+                    <option value="bilingual">中英双语</option>
+                  </select>
+                </ComposerField>
+                <ComposerField label="英文字幕来源">
+                  <select value={subtitleSource} onChange={event => setSubtitleSource(event.target.value as typeof subtitleSource)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">
+                    <option value="ocr">OCR 翻译</option>
+                    <option value="asr">ASR 翻译</option>
+                  </select>
+                </ComposerField>
+                <ComposerField label="字体">
+                  <input value={fontFamily} onChange={event => setFontFamily(event.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" />
+                </ComposerField>
+                <ComposerField label="字号（0=自动）">
+                  <input value={fontSize} onChange={event => setFontSize(Number(event.target.value) || 0)} type="number" className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" />
+                </ComposerField>
+                <ComposerField label="位置">
+                  <select value={subtitlePosition} onChange={event => setSubtitlePosition(event.target.value as typeof subtitlePosition)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">
+                    <option value="bottom">底部</option>
+                    <option value="top">顶部</option>
+                  </select>
+                </ComposerField>
+                <ComposerField label="垂直边距（0=自动）">
+                  <input value={marginV} onChange={event => setMarginV(Number(event.target.value) || 0)} type="number" className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" />
+                </ComposerField>
+                <ComposerField label="字幕颜色">
+                  <input value={subtitleColor} onChange={event => setSubtitleColor(event.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" />
+                </ComposerField>
+                <ComposerField label="描边颜色">
+                  <input value={outlineColor} onChange={event => setOutlineColor(event.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" />
+                </ComposerField>
+                <ComposerField label="描边宽度">
+                  <input value={outlineWidth} onChange={event => setOutlineWidth(Number(event.target.value) || 2)} type="number" className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" />
+                </ComposerField>
+                <ComposerField label="字幕路径预览（可留空）">
+                  <input value={previewPathOverride} onChange={event => setPreviewPathOverride(event.target.value)} placeholder={preferredSubtitlePath || '自动从产物推断'} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" />
+                </ComposerField>
+              </div>
+              <label className="mt-4 flex items-center gap-2 text-sm text-slate-700">
+                <input type="checkbox" checked={subtitleBold} onChange={event => setSubtitleBold(event.target.checked)} />
+                加粗字幕
+              </label>
+              <div className="mt-3 space-y-2 text-xs text-slate-500">
+                <StatusBadge status={previewMutation.isSuccess ? 'succeeded' : previewMutation.isError ? 'failed' : previewMutation.isPending ? 'running' : 'pending'} size="sm" />
+                <StatusBadge status={composeMutation.isSuccess ? 'succeeded' : composeMutation.isError ? 'failed' : composeMutation.isPending ? 'running' : 'pending'} size="sm" />
+                {preferredSubtitlePath ? <div>自动识别字幕：{preferredSubtitlePath}</div> : <div>当前未识别到可预览字幕文件。</div>}
+              </div>
+              <div className="mt-5 flex flex-wrap gap-3">
+                <button
+                  onClick={() => previewMutation.mutate({
+                    input_video_path: task.input_path,
+                    subtitle_path: previewTargetPath,
+                    font_family: fontFamily,
+                    font_size: fontSize,
+                    primary_color: subtitleColor,
+                    outline_color: outlineColor,
+                    outline_width: outlineWidth,
+                    position: subtitlePosition,
+                    margin_v: marginV,
+                    bold: subtitleBold,
+                    duration_sec: 10,
+                  })}
+                  disabled={!previewTargetPath || previewMutation.isPending}
+                  className="inline-flex items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-4 py-2 text-sm font-medium text-sky-700 transition hover:bg-sky-100 disabled:opacity-50"
+                >
+                  <PlayCircle size={16} />
+                  {previewMutation.isPending ? '预览生成中…' : '生成字幕预览'}
+                </button>
+                <button
+                  onClick={() => composeMutation.mutate({
+                    subtitle_mode: subtitleMode,
+                    subtitle_source: subtitleSource,
+                    font_family: fontFamily,
+                    font_size: fontSize,
+                    primary_color: subtitleColor,
+                    outline_color: outlineColor,
+                    outline_width: outlineWidth,
+                    position: subtitlePosition,
+                    margin_v: marginV,
+                    bold: subtitleBold,
+                    bilingual_chinese_position: 'bottom',
+                    bilingual_english_position: 'top',
+                    export_preview: true,
+                    export_dub: true,
+                  })}
+                  disabled={composeMutation.isPending}
+                  className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-50"
+                >
+                  <Sparkles size={16} />
+                  {composeMutation.isPending ? '成品生成中…' : '生成成品视频'}
+                </button>
+              </div>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="mb-3 text-sm font-semibold text-slate-900">预览与导出结果</div>
+              {previewVideoArtifact ? (
+                <video controls className="mb-4 w-full rounded-xl border border-slate-200 bg-black" src={`/api/tasks/${task.id}/artifacts/${previewVideoArtifact.path}`} />
+              ) : (
+                <div className="mb-4 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-400">生成字幕预览后，这里会直接播放结果。</div>
+              )}
+              <div className="space-y-2">
+                {finalVideoArtifacts.map(artifact => (
+                  <a key={artifact.path} href={`/api/tasks/${task.id}/artifacts/${artifact.path}`} className="flex items-center justify-between rounded-xl border border-slate-100 px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50">
+                    <span className="truncate">{artifact.path.split('/').pop()}</span>
+                    <span className="ml-3 shrink-0 text-xs text-slate-400">{formatBytes(artifact.size_bytes)}</span>
+                  </a>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* ── Artifacts + Actions section ── */}
@@ -331,5 +500,14 @@ function MetaItem({ label, value }: { label: string; value: string }) {
       <div className="text-xs text-slate-400">{label}</div>
       <div className="mt-0.5 text-sm font-medium text-slate-700">{value}</div>
     </div>
+  )
+}
+
+function ComposerField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="block">
+      <div className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-400">{label}</div>
+      {children}
+    </label>
   )
 }
