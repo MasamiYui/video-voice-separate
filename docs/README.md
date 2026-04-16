@@ -23,6 +23,7 @@
 | [speaker-aware-dubbing-plan.md](./speaker-aware-dubbing-plan.md) | 多说话人、多语种配音系统的总体规划 |
 | [speaker-aware-dubbing-task-breakdown.md](./speaker-aware-dubbing-task-breakdown.md) | 全链路任务拆解、验收标准和实施顺序 |
 | [frontend-management-system-design.md](./frontend-management-system-design.md) | FastAPI + React 管理界面的设计方案 |
+| [project-optimization-analysis.md](./project-optimization-analysis.md) | 从工程实现与用户体验两个维度梳理项目优化方向 |
 
 ## 分任务设计
 
