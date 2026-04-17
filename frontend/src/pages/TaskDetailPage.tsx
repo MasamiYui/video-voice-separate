@@ -458,24 +458,6 @@ export function TaskDetailPage() {
               <Trash2 size={14} />
               删除任务
             </button>
-
-            {selectedArtifacts.length > 0 && (
-              <div className="ml-auto flex items-center gap-3">
-                <span className="text-xs text-slate-400">当前阶段产物</span>
-                {selectedArtifacts.slice(0, 3).map(artifact => (
-                  <a
-                    key={artifact.path}
-                    href={getArtifactHref(task.id, artifact.path)}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-600 transition-colors hover:bg-slate-50"
-                    title={artifact.path}
-                  >
-                    <Download size={12} />
-                    <span className="max-w-[120px] truncate">{artifact.path.split('/').pop()}</span>
-                    <span className="text-slate-400">{formatBytes(artifact.size_bytes)}</span>
-                  </a>
-                ))}
-              </div>
-            )}
           </div>
         </div>
 
