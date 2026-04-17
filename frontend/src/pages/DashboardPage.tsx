@@ -73,7 +73,7 @@ export function DashboardPage() {
     .slice(0, 5)
 
   return (
-    <PageContainer className="max-w-5xl space-y-6">
+    <PageContainer className="max-w-[112rem] space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{t.dashboard.title}</h1>
         <Link
