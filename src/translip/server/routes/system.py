@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import platform
 import shutil
 import sys
@@ -11,13 +12,7 @@ from ...config import CACHE_ROOT
 
 router = APIRouter(prefix="/api/system", tags=["system"])
 
-_MODEL_CHECKS = [
-    {"name": "CDX23 weights", "path": str(CACHE_ROOT / "models" / "CDX23")},
-    {"name": "faster-whisper small", "path": str(CACHE_ROOT / "models" / "faster_whisper" / "small")},
-    {"name": "SpeechBrain ECAPA", "path": str(CACHE_ROOT / "speechbrain")},
-    {"name": "M2M100 418M", "path": str(CACHE_ROOT / "models" / "m2m100_418M")},
-    {"name": "Qwen3TTS", "path": str(CACHE_ROOT / "models" / "qwen3tts")},
-]
+_CDX23_WEIGHT_GLOB = "*.th"
 
 
 def _dir_size(p: Path) -> int:
@@ -33,6 +28,107 @@ def _dir_size(p: Path) -> int:
     return total
 
 
+def _default_huggingface_cache_root() -> Path:
+    if cache_root := os.environ.get("HUGGINGFACE_HUB_CACHE"):
+        return Path(cache_root)
+    if cache_root := os.environ.get("HF_HUB_CACHE"):
+        return Path(cache_root)
+    hf_home = Path(os.environ.get("HF_HOME", Path.home() / ".cache" / "huggingface"))
+    return hf_home / "hub"
+
+
+def _matches_any_path(paths: list[Path]) -> bool:
+    return any(path.exists() for path in paths)
+
+
+def _has_cdx23_weights(paths: list[Path]) -> bool:
+    for path in paths:
+        if not path.exists():
+            continue
+        if path.is_file() and path.suffix == ".th":
+            return True
+        if path.is_dir() and any(path.glob(_CDX23_WEIGHT_GLOB)):
+            return True
+    return False
+
+
+def _matches_huggingface_model_glob(cache_root: Path, pattern: str) -> bool:
+    return any(path.is_dir() for path in cache_root.glob(pattern))
+
+
+def collect_model_statuses(
+    *,
+    cache_root: Path = CACHE_ROOT,
+    huggingface_cache_root: Path | None = None,
+) -> list[dict[str, str]]:
+    hf_cache_root = huggingface_cache_root or _default_huggingface_cache_root()
+
+    checks = [
+        {
+            "name": "CDX23 weights",
+            "status": "available"
+            if _has_cdx23_weights(
+                [
+                    cache_root / "models" / "cdx23",
+                    cache_root / "models" / "CDX23",
+                ]
+            )
+            else "missing",
+        },
+        {
+            "name": "faster-whisper small",
+            "status": "available"
+            if (
+                _matches_any_path([cache_root / "models" / "faster_whisper" / "small"])
+                or _matches_huggingface_model_glob(
+                    hf_cache_root, "models--Systran--faster-whisper-small*"
+                )
+            )
+            else "missing",
+        },
+        {
+            "name": "SpeechBrain ECAPA",
+            "status": "available"
+            if (
+                _matches_any_path(
+                    [
+                        cache_root / "speechbrain" / "spkrec-ecapa-voxceleb",
+                        cache_root / "speechbrain",
+                    ]
+                )
+                or _matches_huggingface_model_glob(
+                    hf_cache_root, "models--speechbrain--spkrec-ecapa-voxceleb*"
+                )
+            )
+            else "missing",
+        },
+        {
+            "name": "M2M100 418M",
+            "status": "available"
+            if (
+                _matches_any_path(
+                    [
+                        cache_root / "transformers" / "models--facebook--m2m100_418M",
+                        cache_root / "models" / "m2m100_418M",
+                    ]
+                )
+                or _matches_huggingface_model_glob(hf_cache_root, "models--facebook--m2m100_418M*")
+            )
+            else "missing",
+        },
+        {
+            "name": "Qwen3TTS",
+            "status": "available"
+            if (
+                _matches_any_path([cache_root / "models" / "qwen3tts"])
+                or _matches_huggingface_model_glob(hf_cache_root, "models--Qwen--Qwen3-TTS-*")
+            )
+            else "missing",
+        },
+    ]
+    return checks
+
+
 @router.get("/info")
 def get_system_info():
     import torch
@@ -45,16 +141,7 @@ def get_system_info():
         device = "CPU"
 
     cache_size = _dir_size(CACHE_ROOT)
-
-    models = []
-    for m in _MODEL_CHECKS:
-        p = Path(m["path"])
-        models.append(
-            {
-                "name": m["name"],
-                "status": "available" if p.exists() else "missing",
-            }
-        )
+    models = collect_model_statuses()
 
     return {
         "python_version": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
