@@ -92,23 +92,31 @@ function createWrapper(initialEntries = ['/']) {
 describe('page content widths', () => {
   it('keeps task list aligned with the dashboard content width', () => {
     const { container } = render(<TaskListPage />, { wrapper: createWrapper() })
+    const taskListPanel = container.querySelector('.overflow-hidden.rounded-xl.border.border-slate-200.bg-white')
 
     expect(screen.getByRole('heading', { name: '任务列表' })).toBeInTheDocument()
     expect(container.firstChild).toHaveClass(APP_CONTENT_MAX_WIDTH)
+    expect((taskListPanel as HTMLElement).className).not.toContain('shadow')
   })
 
   it('keeps new task aligned with the dashboard content width', () => {
     const { container } = render(<NewTaskPage />, { wrapper: createWrapper() })
+    const sectionCards = container.querySelectorAll('section.overflow-hidden.rounded-xl.border.border-slate-200.bg-white')
 
     expect(screen.getByRole('heading', { name: '新建任务' })).toBeInTheDocument()
     expect(container.firstChild).toHaveClass(APP_CONTENT_MAX_WIDTH)
+    sectionCards.forEach(section => {
+      expect((section as HTMLElement).className).not.toContain('shadow')
+    })
   })
 
   it('keeps settings aligned with the dashboard content width', () => {
     const { container } = render(<SettingsPage />, { wrapper: createWrapper() })
+    const settingsPanel = container.querySelector('.overflow-hidden.rounded-xl.border.border-slate-200.bg-white')
 
     expect(screen.getByRole('heading', { name: '全局设置' })).toBeInTheDocument()
     expect(container.firstChild).toHaveClass(APP_CONTENT_MAX_WIDTH)
+    expect((settingsPanel as HTMLElement).className).not.toContain('shadow')
   })
 
   it('keeps tool list aligned with the dashboard content width', async () => {

@@ -52,7 +52,7 @@ export function WorkflowNodeDrawer({ node, stage, artifacts = [], taskId, onClos
             onClick={onClose}
           />
           <motion.aside
-            className="fixed inset-y-0 right-0 z-40 flex w-full max-w-md flex-col border-l border-slate-200 bg-white shadow-[0_24px_80px_-38px_rgba(15,23,42,0.65)]"
+            className="fixed inset-y-0 right-0 z-40 flex w-full max-w-md flex-col border-l border-slate-200 bg-white"
             initial={{ x: '100%' }}
             animate={{ x: 0 }}
             exit={{ x: '100%' }}

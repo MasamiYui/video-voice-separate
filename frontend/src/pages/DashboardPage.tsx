@@ -27,7 +27,7 @@ function ActiveTaskCard({ task }: { task: Task }) {
   return (
     <Link
       to={`/tasks/${task.id}`}
-      className="block overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition-shadow hover:shadow-md"
+      className="block overflow-hidden rounded-xl border border-slate-200 bg-white transition-colors hover:border-slate-300"
     >
       <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
         <div>
@@ -86,7 +86,7 @@ export function DashboardPage() {
       </div>
 
       {/* Stats */}
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
         <div className="grid grid-cols-2 md:grid-cols-4">
           <StatCard label={t.dashboard.totalTasks} value={total} />
           <StatCard label={t.dashboard.running} value={running} color="text-blue-600" />
@@ -114,7 +114,7 @@ export function DashboardPage() {
       {recentDone.length > 0 && (
         <section>
           <h2 className="text-base font-semibold text-slate-800 mb-3">{t.dashboard.recentCompleted}</h2>
-          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-100 text-left">

@@ -89,7 +89,7 @@ export function WorkflowGraph({
       <div
         ref={containerRef}
         className={cn(
-          'relative overflow-hidden rounded-[30px] border border-slate-200/80 bg-linear-to-br from-white via-slate-50 to-sky-50/60 p-4 shadow-[0_28px_90px_-44px_rgba(15,23,42,0.45)]',
+          'relative overflow-hidden rounded-[30px] border border-slate-200/80 bg-linear-to-br from-white via-slate-50 to-sky-50/60 p-4',
           compact && 'rounded-[24px] p-3',
         )}
       >

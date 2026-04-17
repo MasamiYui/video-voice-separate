@@ -323,7 +323,7 @@ export function TaskDetailPage() {
         {t.taskDetail.backToList}
       </Link>
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
         <div className="border-b border-slate-100 px-7 py-5">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
@@ -646,7 +646,7 @@ export function TaskDetailPage() {
             onClick={() => setExportDrawerOpen(false)}
             aria-label="关闭导出抽屉"
           />
-          <aside className="fixed inset-y-0 right-0 z-40 flex w-full max-w-2xl flex-col border-l border-slate-200 bg-white shadow-[0_24px_80px_-38px_rgba(15,23,42,0.65)]">
+          <aside className="fixed inset-y-0 right-0 z-40 flex w-full max-w-2xl flex-col border-l border-slate-200 bg-white">
             <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-5">
               <div>
                 <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">导出向导</div>
@@ -1092,7 +1092,7 @@ function AssetCheckRow({
 
 function DrawerSection({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5">
       <div className="text-sm font-semibold text-slate-900">{title}</div>
       {children}
     </section>

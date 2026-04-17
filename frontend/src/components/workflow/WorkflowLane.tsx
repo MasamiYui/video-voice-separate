@@ -12,7 +12,7 @@ export function WorkflowLane({ label, hint, children, compact = false }: Workflo
   return (
     <section
       className={cn(
-        'relative rounded-[28px] border border-slate-200/80 bg-white/80 px-4 py-4 shadow-[0_18px_50px_-34px_rgba(15,23,42,0.5)] backdrop-blur',
+        'relative rounded-[28px] border border-slate-200/80 bg-white/80 px-4 py-4 backdrop-blur',
         compact && 'rounded-[24px] px-3 py-3',
       )}
     >

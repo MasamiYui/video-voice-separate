@@ -16,7 +16,7 @@ export function SettingsPage() {
     <PageContainer className={APP_CONTENT_MAX_WIDTH}>
       <h1 className="mb-6 text-2xl font-semibold tracking-tight text-slate-900">{t.settings.title}</h1>
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
         {/* System info */}
         <div className="border-b border-slate-100 px-6 py-5">
           <h2 className="mb-4 text-[11px] font-semibold uppercase tracking-widest text-slate-400">{t.settings.systemInfo}</h2>

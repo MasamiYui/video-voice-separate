@@ -115,7 +115,7 @@ export function TaskListPage() {
       </div>
 
       {/* Table */}
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
         {isLoading ? (
           <div className="py-16 text-center text-slate-400 text-sm">{t.tasks.loading}</div>
         ) : items.length === 0 ? (

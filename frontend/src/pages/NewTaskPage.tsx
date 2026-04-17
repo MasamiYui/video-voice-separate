@@ -119,7 +119,7 @@ function SectionCard({
   minimal?: boolean
 }) {
   return (
-    <section className={minimal ? 'space-y-3' : 'overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm'}>
+    <section className={minimal ? 'space-y-3' : 'overflow-hidden rounded-xl border border-slate-200 bg-white'}>
       <div className={minimal ? 'flex items-center justify-between gap-3' : 'flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-2.5'}>
         <span className={minimal ? 'text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400' : 'text-xs font-semibold uppercase tracking-widest text-slate-500'}>
           {title}
@@ -231,7 +231,7 @@ function SummaryCard({
     : []
 
   return (
-    <section className={minimal ? 'space-y-4' : 'space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm'}>
+    <section className={minimal ? 'space-y-4' : 'space-y-4 rounded-xl border border-slate-200 bg-white p-5'}>
       <div>
         <div className={minimal ? 'text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400' : 'text-xs font-semibold uppercase tracking-widest text-slate-400'}>
           {title}
@@ -241,7 +241,7 @@ function SummaryCard({
             <div className="text-sm font-semibold text-slate-900">本次任务将生成：</div>
             <div
               data-ui-tone="neutral"
-              className="overflow-hidden rounded-[20px] border border-slate-200/80 bg-white/80 p-1 shadow-[0_14px_28px_-24px_rgba(15,23,42,0.14)] backdrop-blur-sm"
+              className="overflow-hidden rounded-[20px] border border-slate-200/80 bg-white/80 p-1 backdrop-blur-sm"
             >
               <div className="grid gap-px overflow-hidden rounded-[16px] bg-slate-200/70 md:grid-cols-3">
                 {minimalItems.map(item => (
@@ -273,7 +273,7 @@ function SummaryCard({
         </div>
       )}
       {warning && (
-        <div className={minimal ? 'rounded-[18px] border border-slate-200/80 bg-white/80 px-4 py-3 text-sm text-slate-700 shadow-[0_12px_24px_-28px_rgba(15,23,42,0.22)] backdrop-blur-sm' : 'rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700'}>
+        <div className={minimal ? 'rounded-[18px] border border-slate-200/80 bg-white/80 px-4 py-3 text-sm text-slate-700 backdrop-blur-sm' : 'rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700'}>
           {minimal && <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">注意</div>}
           {warning}
         </div>
@@ -764,7 +764,7 @@ export function NewTaskPage() {
         ))}
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-slate-100 bg-white p-6 shadow-sm">
+      <div className="overflow-hidden rounded-xl border border-slate-100 bg-white p-6">
         <h2 className="mb-5 text-base font-semibold text-slate-800">
           {(locale === 'zh-CN' ? '步骤' : 'Step')} {step + 1}: {steps[step]}
         </h2>

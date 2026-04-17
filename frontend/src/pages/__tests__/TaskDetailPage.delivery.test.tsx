@@ -119,12 +119,13 @@ describe('TaskDetailPage export workflow', () => {
       edges: [],
     } as never)
 
-    render(<TaskDetailPage />, { wrapper: createWrapper() })
+    const { container } = render(<TaskDetailPage />, { wrapper: createWrapper() })
 
     expect(await screen.findByText('导出成品')).toBeInTheDocument()
     expect(screen.queryByText('Delivery Composer')).not.toBeInTheDocument()
     expect(screen.queryByText('节点详情')).not.toBeInTheDocument()
     expect(screen.getByText('当前素材已经满足推荐导出条件，可以直接生成成品视频。')).toBeInTheDocument()
+    expect((container.querySelector('.overflow-hidden.rounded-xl.border.border-slate-200.bg-white') as HTMLElement).className).not.toContain('shadow')
 
     fireEvent.click(screen.getByRole('button', { name: '导出成品' }))
 
@@ -133,6 +134,10 @@ describe('TaskDetailPage export workflow', () => {
     expect(screen.getByText('3. 选择字幕样式')).toBeInTheDocument()
     expect(screen.getByText('4. 预览并导出')).toBeInTheDocument()
     expect(screen.getByDisplayValue('Source Han Sans')).toBeInTheDocument()
+    expect((screen.getByText('导出向导').closest('aside') as HTMLElement).className).not.toContain('shadow')
+    ;['1. 选择导出版本', '2. 确认素材来源', '3. 选择字幕样式', '4. 预览并导出'].forEach(title => {
+      expect((screen.getByText(title).closest('section') as HTMLElement).className).not.toContain('shadow')
+    })
   })
 
   it('surfaces blockers for tasks that still need more assets before export', async () => {

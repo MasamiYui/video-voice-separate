@@ -88,6 +88,7 @@ describe('NewTaskPage redesigned flow', () => {
     expect(screen.getByText('优先干净画面 + 英文字幕')).toBeInTheDocument()
     expect(screen.getByText('OCR 字幕链路、导出预览能力')).toBeInTheDocument()
     expect(screen.getByText('语言方向').closest('[data-ui-tone="neutral"]')).not.toBeNull()
+    expect((screen.getByText('语言方向').closest('[data-ui-tone="neutral"]') as HTMLElement).className).not.toContain('shadow')
     expect(document.querySelector('[data-ui-layout="unified-dag"]')).not.toBeNull()
   })
 
