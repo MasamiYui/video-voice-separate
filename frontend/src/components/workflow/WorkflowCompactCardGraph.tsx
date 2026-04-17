@@ -15,6 +15,7 @@ import {
   AudioWaveform,
   Clapperboard,
   Eraser,
+  Pin,
   FileOutput,
   Film,
   Headphones,
@@ -23,14 +24,19 @@ import {
   ScanText,
   Scissors,
   Users,
+  X,
   type LucideIcon,
 } from 'lucide-react'
-import { useMemo } from 'react'
-import { getWorkflowColumn, WORKFLOW_LANES } from '../../lib/workflowPreview'
+import { useCallback, useMemo, useState } from 'react'
 import { cn } from '../../lib/utils'
 import type { StageShortKey, StatusKey } from '../../i18n/formatters'
 import { useI18n } from '../../i18n/useI18n'
-import type { WorkflowEdgeState, WorkflowGraph as WorkflowGraphPayload, WorkflowGraphNode } from '../../types'
+import type {
+  WorkflowEdgeState,
+  WorkflowGraph as WorkflowGraphPayload,
+  WorkflowGraphNode,
+  WorkflowNodeGroup,
+} from '../../types'
 import { WorkflowLegend } from './WorkflowLegend'
 
 const NODE_ICON: Record<string, LucideIcon> = {
@@ -73,36 +79,27 @@ const PREVIEW_HINTS: Record<string, { zh: string; en: string }> = {
 }
 
 const STATUS_STYLES: Record<WorkflowGraphNode['status'], string> = {
-  pending: 'border-slate-200/85 bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(248,250,252,0.95))] text-slate-700',
-  running: 'border-sky-200/90 bg-[linear-gradient(135deg,rgba(240,249,255,0.98),rgba(255,255,255,0.96))] text-slate-900',
-  succeeded: 'border-emerald-200/90 bg-[linear-gradient(135deg,rgba(240,253,244,0.98),rgba(255,255,255,0.96))] text-slate-900',
-  cached: 'border-violet-200/90 bg-[linear-gradient(135deg,rgba(245,243,255,0.98),rgba(255,255,255,0.96))] text-slate-900',
-  failed: 'border-rose-200/90 bg-[linear-gradient(135deg,rgba(255,241,242,0.98),rgba(255,255,255,0.96))] text-slate-900',
-  skipped: 'border-slate-200/80 bg-[linear-gradient(135deg,rgba(250,250,250,0.96),rgba(255,255,255,0.94))] text-slate-600',
-}
-
-const ACCENT_STYLES: Record<WorkflowGraphNode['status'], string> = {
-  pending: 'bg-slate-200',
-  running: 'bg-sky-400',
-  succeeded: 'bg-emerald-400',
-  cached: 'bg-violet-400',
-  failed: 'bg-rose-400',
-  skipped: 'bg-slate-300',
+  pending: 'border-slate-200/90 bg-white text-slate-700',
+  running: 'border-sky-200/90 bg-sky-50/80 text-slate-900',
+  succeeded: 'border-emerald-200/90 bg-emerald-50/70 text-slate-900',
+  cached: 'border-violet-200/90 bg-violet-50/70 text-slate-900',
+  failed: 'border-rose-200/90 bg-rose-50/75 text-slate-900',
+  skipped: 'border-slate-200/85 bg-slate-50/85 text-slate-600',
 }
 
 const EDGE_STYLES: Record<WorkflowEdgeState, Partial<Edge>> = {
   inactive: {
-    style: { stroke: '#D6D3D1', strokeWidth: 1.4 },
+    style: { stroke: '#CBD5E1', strokeWidth: 1.5 },
     animated: false,
-    markerEnd: { type: MarkerType.ArrowClosed, color: '#D6D3D1', width: 10, height: 10 },
+    markerEnd: { type: MarkerType.ArrowClosed, color: '#CBD5E1', width: 10, height: 10 },
   },
   active: {
-    style: { stroke: '#38BDF8', strokeWidth: 2 },
-    animated: true,
+    style: { stroke: '#38BDF8', strokeWidth: 2.2 },
+    animated: false,
     markerEnd: { type: MarkerType.ArrowClosed, color: '#38BDF8', width: 12, height: 12 },
   },
   completed: {
-    style: { stroke: '#34D399', strokeWidth: 1.8 },
+    style: { stroke: '#34D399', strokeWidth: 1.9 },
     animated: false,
     markerEnd: { type: MarkerType.ArrowClosed, color: '#34D399', width: 11, height: 11 },
   },
@@ -113,96 +110,89 @@ const EDGE_STYLES: Record<WorkflowEdgeState, Partial<Edge>> = {
   },
 }
 
-const PREVIEW_NODE_WIDTH = 188
-const RUNTIME_NODE_WIDTH = 196
-const PREVIEW_NODE_HEIGHT = 90
-const RUNTIME_NODE_HEIGHT = 104
-const COLUMN_SPACING = 220
-const ROW_GAP = 34
+const PREVIEW_NODE_WIDTH = 160
+const PREVIEW_NODE_HEIGHT = 82
+const RUNTIME_NODE_WIDTH = 172
+const RUNTIME_NODE_HEIGHT = 92
+const ANCHOR_WIDTH = 86
+const ANCHOR_HEIGHT = 40
 const HANDLE_STYLE = { width: 8, height: 8, opacity: 0, pointerEvents: 'none' as const }
+const START_NODE_ID = '__dag-start__'
+const END_NODE_ID = '__dag-end__'
+const MAINLINE_NODE_IDS = ['stage1', 'task-a', 'task-b', 'task-c', 'task-d', 'task-e', 'task-g'] as const
 
 interface CompactNodeChromeProps {
   node: WorkflowGraphNode
   previewOnly: boolean
   shortLabel: string
-  hint: string
   statusLabel: string
-  selected?: boolean
-  interactive?: boolean
-  onSelect?: (nodeId: string) => void
+  focused?: boolean
+  pinned?: boolean
+  onHoverChange?: (nodeId: string | null) => void
+  onPin?: (nodeId: string) => void
 }
 
 function CompactNodeChrome({
   node,
   previewOnly,
   shortLabel,
-  hint,
   statusLabel,
-  selected = false,
-  interactive = false,
-  onSelect,
+  focused = false,
+  pinned = false,
+  onHoverChange,
+  onPin,
 }: CompactNodeChromeProps) {
-  const { locale, t } = useI18n()
   const Icon = NODE_ICON[node.id] ?? AudioWaveform
   const showProgress = !previewOnly && node.status === 'running'
-  const runtimeCaption = !previewOnly && node.current_step ? node.current_step : null
   const statusChip = showProgress ? `${statusLabel} ${Math.round(node.progress_percent)}%` : statusLabel
 
   return (
     <button
       type="button"
-      onClick={interactive ? () => onSelect?.(node.id) : undefined}
+      onClick={() => onPin?.(node.id)}
+      onMouseEnter={() => onHoverChange?.(node.id)}
+      onMouseLeave={() => onHoverChange?.(null)}
+      onFocus={() => onHoverChange?.(node.id)}
+      onBlur={() => onHoverChange?.(null)}
       data-ui-elevation="flat"
+      data-ui-card-size="matched"
+      data-ui-node-role={node.group === 'delivery' ? 'terminal' : 'workflow'}
       className={cn(
-        'group relative grid h-full w-full grid-cols-[38px_minmax(0,1fr)] gap-3 overflow-hidden rounded-[18px] border px-3 py-3 text-left transition-colors duration-200',
+        'group relative flex h-full w-full items-center gap-3 overflow-hidden rounded-[22px] border px-3 py-3 text-left transition-colors duration-200',
         STATUS_STYLES[node.status],
-        interactive && 'cursor-pointer',
-        selected && 'ring-2 ring-sky-300/80 ring-offset-2 ring-offset-white',
+        'cursor-pointer',
+        focused && 'ring-2 ring-sky-300/80 ring-offset-2 ring-offset-white',
       )}
     >
-      {!previewOnly && (
-        <div className={cn('absolute inset-y-3 left-0 w-[2px] rounded-full', ACCENT_STYLES[node.status])} />
-      )}
-
       {!previewOnly && (
         <span className="absolute right-3 top-3 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.16em] text-slate-500">
           {statusChip}
         </span>
       )}
 
-      <div className="flex min-h-[56px] flex-col items-center justify-between py-0.5">
-        <div className="flex h-9 w-9 items-center justify-center rounded-[14px] border border-slate-200 bg-white text-current">
-          <Icon size={16} />
-        </div>
-        <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-current/52">
-          {NODE_CODE[node.id] ?? node.id}
-        </div>
+      {pinned && !previewOnly && (
+        <span className="absolute bottom-3 right-3 inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400">
+          <Pin size={11} />
+        </span>
+      )}
+
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[15px] border border-slate-200 bg-white text-current">
+        <Icon size={16} />
       </div>
 
-      <div className="min-w-0 pr-1">
-        <div className="text-[10px] font-medium uppercase tracking-[0.18em] text-current/42">
-          {locale === 'zh-CN' ? '流水线节点' : 'Pipeline step'}
+      <div className="min-w-0 flex-1">
+        <div className="text-[10px] font-medium uppercase tracking-[0.22em] text-current/42">
+          {NODE_CODE[node.id] ?? node.id}
         </div>
 
-        <div className={cn('font-semibold leading-tight tracking-tight text-current', previewOnly ? 'mt-1 text-[15px]' : 'mt-1 text-[16px] pr-16')}>
+        <div
+          className={cn(
+            'font-semibold leading-tight tracking-tight text-current',
+            previewOnly ? 'mt-1 text-[15px]' : 'mt-1 pr-16 text-[15px]',
+          )}
+        >
           {shortLabel}
         </div>
-
-        <p className="mt-1.5 text-[11px] leading-5 text-current/68">
-          {hint}
-        </p>
-
-        {node.required === false && (
-          <span className="mt-2 inline-flex rounded-full border border-dashed border-slate-200 bg-white/75 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-            {t.workflow.optional}
-          </span>
-        )}
-
-        {!previewOnly && runtimeCaption && (
-          <div className="mt-2 line-clamp-1 text-[10px] font-medium text-current/58">
-            {runtimeCaption}
-          </div>
-        )}
 
         {showProgress && (
           <div className="mt-2 overflow-hidden rounded-full bg-sky-100/90">
@@ -221,10 +211,11 @@ interface CompactFlowNodeData extends Record<string, unknown> {
   node: WorkflowGraphNode
   previewOnly: boolean
   shortLabel: string
-  hint: string
   statusLabel: string
-  isSelected: boolean
-  onSelect?: (nodeId: string) => void
+  isFocused: boolean
+  isPinned: boolean
+  onHoverChange?: (nodeId: string | null) => void
+  onPin?: (nodeId: string) => void
 }
 
 function CompactFlowNode({ data }: NodeProps) {
@@ -243,18 +234,48 @@ function CompactFlowNode({ data }: NodeProps) {
         node={d.node}
         previewOnly={d.previewOnly}
         shortLabel={d.shortLabel}
-        hint={d.hint}
         statusLabel={d.statusLabel}
-        selected={d.isSelected}
-        interactive={Boolean(d.onSelect)}
-        onSelect={d.onSelect}
+        focused={d.isFocused}
+        pinned={d.isPinned}
+        onHoverChange={d.onHoverChange}
+        onPin={d.onPin}
       />
+    </div>
+  )
+}
+
+interface AnchorNodeData extends Record<string, unknown> {
+  kind: 'start' | 'end'
+  label: string
+}
+
+function AnchorNode({ data }: NodeProps) {
+  const d = data as AnchorNodeData
+
+  return (
+    <div
+      data-ui-anchor={d.kind}
+      className="flex h-full w-full items-center justify-center"
+    >
+      {d.kind === 'end' && <Handle id="left" type="target" position={Position.Left} style={HANDLE_STYLE} />}
+      {d.kind === 'start' && <Handle id="right" type="source" position={Position.Right} style={HANDLE_STYLE} />}
+
+      <div className="inline-flex items-center gap-2 rounded-full border border-slate-200/90 bg-white/92 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+        <span
+          className={cn(
+            'h-2.5 w-2.5 rounded-full',
+            d.kind === 'start' ? 'bg-sky-400' : 'border border-slate-300 bg-white',
+          )}
+        />
+        <span>{d.label}</span>
+      </div>
     </div>
   )
 }
 
 const NODE_TYPES: NodeTypes = {
   editorialNode: CompactFlowNode as unknown as NodeTypes['editorialNode'],
+  dagAnchor: AnchorNode as unknown as NodeTypes['dagAnchor'],
 }
 
 function getPreviewHint(node: WorkflowGraphNode, locale: 'zh-CN' | 'en-US') {
@@ -273,301 +294,195 @@ function resolveNodeHint(node: WorkflowGraphNode, locale: 'zh-CN' | 'en-US', pre
   return getPreviewHint(node, locale)
 }
 
-function edgeStateBetween(graph: WorkflowGraphPayload, from: string, to: string): WorkflowEdgeState {
-  return graph.edges.find(edge => edge.from === from && edge.to === to)?.state ?? 'inactive'
+interface DagLayoutResult {
+  height: number
+  positions: Record<string, { x: number; y: number }>
 }
 
-function resolveHandles(source: { x: number; y: number }, target: { x: number; y: number }) {
-  if (source.y === target.y) {
-    return source.x < target.x
+function buildCompactDagLayout(graph: WorkflowGraphPayload, previewOnly: boolean): DagLayoutResult {
+  const nodeWidth = previewOnly ? PREVIEW_NODE_WIDTH : RUNTIME_NODE_WIDTH
+  const nodeHeight = previewOnly ? PREVIEW_NODE_HEIGHT : RUNTIME_NODE_HEIGHT
+  const gapX = previewOnly ? 24 : 30
+  const mainlineY = previewOnly ? 96 : 104
+  const branchY = mainlineY + nodeHeight + (previewOnly ? 34 : 40)
+  const hasBranchNodes = ['ocr-detect', 'ocr-translate', 'subtitle-erase'].some(nodeId =>
+    graph.nodes.some(node => node.id === nodeId),
+  )
+  const startX = 28
+  const startGap = previewOnly ? 30 : 24
+  const firstNodeX = startX + ANCHOR_WIDTH + startGap
+  const positions: Record<string, { x: number; y: number }> = {}
+  const presentNodeIds = new Set(graph.nodes.map(node => node.id))
+  const mainlineNodeIds = hasBranchNodes
+    ? MAINLINE_NODE_IDS.filter(nodeId => nodeId !== 'task-g')
+    : [...MAINLINE_NODE_IDS]
+
+  let cursorX = firstNodeX
+  for (const nodeId of mainlineNodeIds) {
+    if (!presentNodeIds.has(nodeId)) {
+      continue
+    }
+    positions[nodeId] = { x: cursorX, y: mainlineY }
+    cursorX += nodeWidth + gapX
+  }
+
+  if (presentNodeIds.has('ocr-detect')) {
+    positions['ocr-detect'] = {
+      x:
+        positions['stage1']?.x != null
+          ? positions['stage1'].x + Math.round((nodeWidth + gapX) * 0.52)
+          : positions['task-a']?.x ?? firstNodeX + nodeWidth + gapX,
+      y: branchY,
+    }
+  }
+
+  if (presentNodeIds.has('ocr-translate')) {
+    positions['ocr-translate'] = {
+      x: positions['task-c']?.x ?? positions['ocr-detect']?.x ?? firstNodeX + (nodeWidth + gapX) * 2,
+      y: branchY,
+    }
+  }
+
+  if (presentNodeIds.has('subtitle-erase')) {
+    positions['subtitle-erase'] = {
+      x:
+        positions['task-e']?.x
+        ?? positions['task-d']?.x
+        ?? positions['ocr-translate']?.x
+        ?? positions['ocr-detect']?.x
+        ?? firstNodeX + (nodeWidth + gapX) * 3,
+      y: branchY,
+    }
+  }
+
+  if (presentNodeIds.has('task-g')) {
+    if (hasBranchNodes) {
+      positions['task-g'] = {
+        x: (positions['task-e']?.x ?? cursorX) + nodeWidth + gapX + (previewOnly ? 4 : 8),
+        y: mainlineY + Math.round((branchY - mainlineY) * 0.58),
+      }
+      cursorX = positions['task-g'].x + nodeWidth
+    } else if (!positions['task-g']) {
+      positions['task-g'] = { x: cursorX, y: mainlineY }
+      cursorX += nodeWidth + gapX
+    }
+  }
+
+  const startAnchorY = mainlineY + nodeHeight / 2 - ANCHOR_HEIGHT / 2
+  const endAnchorTargetY = positions['task-g']?.y ?? mainlineY
+  const endAnchorY = endAnchorTargetY + nodeHeight / 2 - ANCHOR_HEIGHT / 2
+  positions[START_NODE_ID] = { x: startX, y: startAnchorY }
+  positions[END_NODE_ID] = { x: cursorX + 20, y: endAnchorY }
+
+  const maxBottom = Object.entries(positions)
+    .filter(([id]) => id !== START_NODE_ID && id !== END_NODE_ID)
+    .reduce((bottom, [, position]) => Math.max(bottom, position.y + nodeHeight), mainlineY + nodeHeight)
+
+  return {
+    positions,
+    height: maxBottom + 32,
+  }
+}
+
+function getLayoutBounds(nodeId: string, previewOnly: boolean, positions: Record<string, { x: number; y: number }>) {
+  const isAnchor = nodeId === START_NODE_ID || nodeId === END_NODE_ID
+  const width = isAnchor ? ANCHOR_WIDTH : previewOnly ? PREVIEW_NODE_WIDTH : RUNTIME_NODE_WIDTH
+  const height = isAnchor ? ANCHOR_HEIGHT : previewOnly ? PREVIEW_NODE_HEIGHT : RUNTIME_NODE_HEIGHT
+  const position = positions[nodeId] ?? { x: 0, y: 0 }
+
+  return { ...position, width, height }
+}
+
+function resolveHandles(
+  sourceNodeId: string,
+  targetNodeId: string,
+  previewOnly: boolean,
+  positions: Record<string, { x: number; y: number }>,
+) {
+  const source = getLayoutBounds(sourceNodeId, previewOnly, positions)
+  const target = getLayoutBounds(targetNodeId, previewOnly, positions)
+  const dx = target.x + target.width / 2 - (source.x + source.width / 2)
+  const dy = target.y + target.height / 2 - (source.y + source.height / 2)
+
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    return dx >= 0
       ? { sourceHandle: 'right', targetHandle: 'left' }
       : { sourceHandle: 'left', targetHandle: 'right' }
   }
 
-  return source.y < target.y
+  return dy >= 0
     ? { sourceHandle: 'bottom', targetHandle: 'top' }
     : { sourceHandle: 'top', targetHandle: 'bottom' }
 }
 
-function buildSnakeLayout(nodes: WorkflowGraphNode[], previewOnly: boolean) {
-  const nodeWidth = previewOnly ? PREVIEW_NODE_WIDTH : RUNTIME_NODE_WIDTH
-  const nodeHeight = previewOnly ? PREVIEW_NODE_HEIGHT : RUNTIME_NODE_HEIGHT
-  const topCount = nodes.length > 4 ? Math.ceil(nodes.length / 2) : nodes.length
-  const topRow = nodes.slice(0, topCount)
-  const bottomRow = nodes.slice(topCount)
-  const positions = new Map<string, { x: number; y: number }>()
-
-  topRow.forEach((node, index) => {
-    positions.set(node.id, { x: index * COLUMN_SPACING, y: 8 })
-  })
-
-  bottomRow.forEach((node, index) => {
-    positions.set(node.id, {
-      x: (topCount - 1 - index) * COLUMN_SPACING,
-      y: nodeHeight + ROW_GAP,
-    })
-  })
-
-  const width = Math.max(1, topCount) * COLUMN_SPACING - (topCount > 0 ? COLUMN_SPACING - nodeWidth : 0) + 16
-  const height = bottomRow.length > 0 ? nodeHeight * 2 + ROW_GAP + 16 : nodeHeight + 16
-
-  return { positions, width, height }
+function edgeStateFromNodeStatus(status: WorkflowGraphNode['status']): WorkflowEdgeState {
+  if (status === 'running') return 'active'
+  if (status === 'failed') return 'blocked'
+  if (status === 'succeeded' || status === 'cached') return 'completed'
+  return 'inactive'
 }
 
-interface CompactLaneFlowProps {
-  graph: WorkflowGraphPayload
-  laneId: WorkflowGraphNode['group']
-  selectedNodeId?: string
-  onNodeSelect?: (nodeId: string) => void
+function getCompactEdgeStyle(state: WorkflowEdgeState, previewOnly: boolean): Partial<Edge> {
+  if (previewOnly) {
+    return {
+      style: { stroke: '#CBD5E1', strokeWidth: 1.35, opacity: 0.92 },
+      animated: false,
+    }
+  }
+
+  return EDGE_STYLES[state]
 }
 
-function CompactLaneFlow({ graph, laneId, selectedNodeId, onNodeSelect }: CompactLaneFlowProps) {
-  const { locale, getStageShortLabel, getStatusLabel, t } = useI18n()
-  const previewOnly = graph.nodes.every(node => node.status === 'pending')
+function getAnchorLabel(kind: 'start' | 'end', locale: 'zh-CN' | 'en-US') {
+  if (locale === 'zh-CN') {
+    return kind === 'start' ? '输入源' : '最终交付'
+  }
 
-  const laneNodes = useMemo(() => {
-    return graph.nodes
-      .filter(node => node.group === laneId)
-      .sort((left, right) => getWorkflowColumn(left.id) - getWorkflowColumn(right.id))
-  }, [graph.nodes, laneId])
-
-  const laneGraph = useMemo(() => {
-    const { positions, width, height } = buildSnakeLayout(laneNodes, previewOnly)
-
-    const nodes: Node[] = laneNodes.map(node => ({
-      id: node.id,
-      type: 'editorialNode',
-      position: positions.get(node.id) ?? { x: 0, y: 0 },
-      data: {
-        node,
-        previewOnly,
-        shortLabel: getStageShortLabel(node.id as keyof typeof t.stageShort),
-        hint: resolveNodeHint(node, locale, previewOnly),
-        statusLabel: getStatusLabel(node.status as keyof typeof t.status),
-        isSelected: node.id === selectedNodeId,
-        onSelect: onNodeSelect,
-      } satisfies CompactFlowNodeData,
-      width: previewOnly ? PREVIEW_NODE_WIDTH : RUNTIME_NODE_WIDTH,
-      height: previewOnly ? PREVIEW_NODE_HEIGHT : RUNTIME_NODE_HEIGHT,
-      selectable: true,
-      draggable: false,
-      focusable: true,
-    }))
-
-    const edges: Edge[] = laneNodes.slice(0, -1).map((node, index) => {
-      const next = laneNodes[index + 1]
-      const source = positions.get(node.id) ?? { x: 0, y: 0 }
-      const target = positions.get(next.id) ?? { x: 0, y: 0 }
-      const handles = resolveHandles(source, target)
-      const state = edgeStateBetween(graph, node.id, next.id)
-
-      return {
-        id: `${node.id}--${next.id}`,
-        source: node.id,
-        target: next.id,
-        type: 'smoothstep',
-        sourceHandle: handles.sourceHandle,
-        targetHandle: handles.targetHandle,
-        ...EDGE_STYLES[state],
-      }
-    })
-
-    return { nodes, edges, height, width }
-  }, [
-    getStageShortLabel,
-    getStatusLabel,
-    graph,
-    laneNodes,
-    locale,
-    onNodeSelect,
-    previewOnly,
-    selectedNodeId,
-    t,
-  ])
-
-  return (
-    <div className="overflow-x-auto rounded-[18px] border border-slate-200/70 bg-white p-2">
-      <div className="flex min-w-fit justify-center">
-        <div className="overflow-hidden rounded-[14px]" style={{ width: laneGraph.width, height: laneGraph.height }}>
-          <ReactFlow
-            nodes={laneGraph.nodes}
-            edges={laneGraph.edges}
-            nodeTypes={NODE_TYPES}
-            defaultViewport={{ x: 0, y: 0, zoom: 1 }}
-            nodesDraggable={false}
-            nodesConnectable={false}
-            elementsSelectable={false}
-            panOnDrag
-            zoomOnScroll
-            zoomOnPinch
-            zoomOnDoubleClick={false}
-            preventScrolling={false}
-            minZoom={0.45}
-            maxZoom={1.6}
-            proOptions={{ hideAttribution: true }}
-          >
-            <Background
-              variant={BackgroundVariant.Dots}
-              gap={26}
-              size={1}
-              color="#e2e8f0"
-            />
-          </ReactFlow>
-        </div>
-      </div>
-    </div>
-  )
+  return kind === 'start' ? 'Source' : 'Delivered'
 }
 
-interface DeliveryTerminalCardProps {
-  node: WorkflowGraphNode
-  previewOnly: boolean
-  shortLabel: string
-  hint: string
-  statusLabel: string
-  selected?: boolean
-  interactive?: boolean
-  onSelect?: (nodeId: string) => void
+function getMetaLabel(group: WorkflowNodeGroup, locale: 'zh-CN' | 'en-US') {
+  if (locale === 'zh-CN') {
+    switch (group) {
+      case 'audio-spine':
+        return '音频主干'
+      case 'ocr-subtitles':
+        return 'OCR 支线'
+      case 'video-cleanup':
+        return '净化支线'
+      case 'delivery':
+        return '终态输出'
+      default:
+        return '处理节点'
+    }
+  }
+
+  switch (group) {
+    case 'audio-spine':
+      return 'Audio spine'
+    case 'ocr-subtitles':
+      return 'OCR branch'
+    case 'video-cleanup':
+      return 'Cleanup branch'
+    case 'delivery':
+      return 'Final output'
+    default:
+      return 'Pipeline node'
+  }
 }
 
-function DeliveryTerminalCard({
-  node,
-  previewOnly,
-  shortLabel,
-  hint,
-  statusLabel,
-  selected = false,
-  interactive = false,
-  onSelect,
-}: DeliveryTerminalCardProps) {
-  const { locale } = useI18n()
-  const Icon = NODE_ICON[node.id] ?? Film
-  const nodeWidth = previewOnly ? PREVIEW_NODE_WIDTH : RUNTIME_NODE_WIDTH
-  const nodeHeight = previewOnly ? PREVIEW_NODE_HEIGHT : RUNTIME_NODE_HEIGHT
-  const showProgress = !previewOnly && node.status === 'running'
-  const runtimeCaption = !previewOnly && node.current_step ? node.current_step : null
-  const statusChip = showProgress ? `${statusLabel} ${Math.round(node.progress_percent)}%` : statusLabel
-
-  return (
-    <div
-      data-ui-elevation="flat"
-      data-ui-delivery-node="compact"
-      data-ui-size="matched"
-      style={{ width: nodeWidth, height: nodeHeight }}
-    >
-      <button
-        type="button"
-        onClick={interactive ? () => onSelect?.(node.id) : undefined}
-        className={cn(
-          'group relative grid h-full w-full grid-cols-[38px_minmax(0,1fr)] gap-3 overflow-hidden rounded-[18px] border px-3 py-3 text-left transition-colors duration-200',
-          STATUS_STYLES[node.status],
-          interactive && 'cursor-pointer',
-          selected && 'ring-2 ring-sky-300/80 ring-offset-2 ring-offset-white',
-        )}
-      >
-        {!previewOnly && (
-          <span className="absolute right-3 top-3 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-            {statusChip}
-          </span>
-        )}
-
-        <div className="flex min-h-[56px] flex-col items-center justify-between py-0.5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-[14px] border border-slate-200 bg-white text-current">
-            <Icon size={16} />
-          </div>
-          <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-current/52">
-            {NODE_CODE[node.id] ?? node.id}
-          </div>
-        </div>
-
-        <div className="min-w-0 pr-1">
-          <div className="text-[10px] font-medium uppercase tracking-[0.18em] text-current/42">
-            {locale === 'zh-CN' ? '终态输出' : 'Final output'}
-          </div>
-          <div className={cn('font-semibold leading-tight tracking-tight text-current', previewOnly ? 'mt-1 text-[15px]' : 'mt-1 text-[16px] pr-16')}>
-            {shortLabel}
-          </div>
-          <p className="mt-1.5 text-[11px] leading-5 text-current/68">
-            {hint}
-          </p>
-
-          {!previewOnly && runtimeCaption && (
-            <div className="mt-2 line-clamp-1 text-[10px] font-medium text-current/58">
-              {runtimeCaption}
-            </div>
-          )}
-
-          {showProgress && (
-            <div className="mt-2 overflow-hidden rounded-full bg-sky-100/90">
-              <div
-                className="h-1 rounded-full bg-sky-400"
-                style={{ width: `${node.progress_percent}%` }}
-              />
-            </div>
-          )}
-        </div>
-      </button>
-    </div>
-  )
+function getFocusRailInstruction(locale: 'zh-CN' | 'en-US') {
+  return locale === 'zh-CN'
+    ? '悬停节点可查看说明，点击节点可锁定。'
+    : 'Hover a node to inspect it, click to pin it.'
 }
 
-interface DeliveryLaneProps {
-  graph: WorkflowGraphPayload
-  node: WorkflowGraphNode
-  selectedNodeId?: string
-  onNodeSelect?: (nodeId: string) => void
+function getFocusRailPinnedLabel(locale: 'zh-CN' | 'en-US') {
+  return locale === 'zh-CN' ? '已锁定' : 'Pinned'
 }
 
-function DeliveryLane({ graph, node, selectedNodeId, onNodeSelect }: DeliveryLaneProps) {
-  const { locale, getStageShortLabel, getStatusLabel } = useI18n()
-  const previewOnly = graph.nodes.every(item => item.status === 'pending')
-
-  return (
-    <div
-      data-ui-layout="delivery-terminal"
-      className="flex justify-center"
-    >
-      <div className="min-w-0">
-        <DeliveryTerminalCard
-          node={node}
-          previewOnly={previewOnly}
-          shortLabel={getStageShortLabel(node.id as StageShortKey)}
-          hint={resolveNodeHint(node, locale, previewOnly)}
-          statusLabel={getStatusLabel(node.status as StatusKey)}
-          selected={node.id === selectedNodeId}
-          interactive={Boolean(onNodeSelect)}
-          onSelect={onNodeSelect}
-        />
-      </div>
-    </div>
-  )
-}
-
-function LaneCount({ count }: { count: number }) {
-  const { locale } = useI18n()
-
-  return (
-    <div className="rounded-full border border-slate-200/80 bg-white/82 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.16em] text-slate-400 shadow-[0_8px_18px_-18px_rgba(15,23,42,0.24)]">
-      {count} {locale === 'zh-CN' ? '节点' : count > 1 ? 'steps' : 'step'}
-    </div>
-  )
-}
-
-interface LaneHeaderProps {
-  label: string
-  count: number
-}
-
-function LaneHeader({ label, count }: LaneHeaderProps) {
-  return (
-    <div className="mb-2.5 flex items-center gap-3">
-      <div className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.28em] text-slate-400">
-        {label}
-      </div>
-      <div className="h-px flex-1 bg-slate-200/80" />
-      <LaneCount count={count} />
-    </div>
-  )
+function getFocusRailClearLabel(locale: 'zh-CN' | 'en-US') {
+  return locale === 'zh-CN' ? '取消锁定' : 'Clear pin'
 }
 
 interface WorkflowCompactCardGraphProps {
@@ -583,52 +498,305 @@ export function WorkflowCompactCardGraph({
   onNodeSelect,
   showLegend = false,
 }: WorkflowCompactCardGraphProps) {
-  const { t } = useI18n()
+  const { locale, getStageShortLabel, getStatusLabel, t } = useI18n()
+  const previewOnly = graph.nodes.every(node => node.status === 'pending')
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
+  const [pinnedNodeId, setPinnedNodeId] = useState<string | null>(null)
 
-  const groupedNodes = useMemo(() => {
-    return WORKFLOW_LANES.map(lane => ({
-      lane: lane.id,
-      label: t.workflow.lanes[lane.id],
-      nodes: graph.nodes
-        .filter(node => node.group === lane.id)
-        .sort((left, right) => getWorkflowColumn(left.id) - getWorkflowColumn(right.id)),
-    })).filter(entry => entry.nodes.length > 0)
-  }, [graph.nodes, t.workflow.lanes])
+  const focusedNodeId = hoveredNodeId ?? pinnedNodeId ?? selectedNodeId ?? null
+  const focusedNode = graph.nodes.find(node => node.id === focusedNodeId) ?? null
+  const pinnedNode = graph.nodes.find(node => node.id === pinnedNodeId) ?? null
+
+  const handlePin = useCallback((nodeId: string) => {
+    setPinnedNodeId(current => (current === nodeId ? null : nodeId))
+    onNodeSelect?.(nodeId)
+  }, [onNodeSelect])
+
+  const flowModel = useMemo(() => {
+    const nodesById = new Map(graph.nodes.map(node => [node.id, node]))
+    const incoming = new Set(graph.edges.map(edge => edge.to))
+    const outgoing = new Set(graph.edges.map(edge => edge.from))
+    const previewBranchRoots = new Set<string>()
+    const roots = graph.nodes.filter(node => !incoming.has(node.id))
+    const terminals = graph.nodes.filter(node => !outgoing.has(node.id))
+    const layout = buildCompactDagLayout(graph, previewOnly)
+
+    const anchorNodes: Node[] = [
+      {
+        id: START_NODE_ID,
+        type: 'dagAnchor',
+        position: layout.positions[START_NODE_ID],
+        data: {
+          kind: 'start',
+          label: getAnchorLabel('start', locale),
+        } satisfies AnchorNodeData,
+        width: ANCHOR_WIDTH,
+        height: ANCHOR_HEIGHT,
+        selectable: false,
+        draggable: false,
+        focusable: false,
+        zIndex: 12,
+      },
+      {
+        id: END_NODE_ID,
+        type: 'dagAnchor',
+        position: layout.positions[END_NODE_ID],
+        data: {
+          kind: 'end',
+          label: getAnchorLabel('end', locale),
+        } satisfies AnchorNodeData,
+        width: ANCHOR_WIDTH,
+        height: ANCHOR_HEIGHT,
+        selectable: false,
+        draggable: false,
+        focusable: false,
+        zIndex: 12,
+      },
+    ]
+
+    const workflowNodes: Node[] = graph.nodes.map(node => ({
+      id: node.id,
+      type: 'editorialNode',
+      position: layout.positions[node.id] ?? { x: 0, y: 0 },
+      data: {
+        node,
+        previewOnly,
+        shortLabel: getStageShortLabel(node.id as StageShortKey),
+        statusLabel: getStatusLabel(node.status as StatusKey),
+        isFocused: node.id === focusedNodeId,
+        isPinned: node.id === pinnedNodeId,
+        onHoverChange: setHoveredNodeId,
+        onPin: handlePin,
+      } satisfies CompactFlowNodeData,
+      width: previewOnly ? PREVIEW_NODE_WIDTH : RUNTIME_NODE_WIDTH,
+      height: previewOnly ? PREVIEW_NODE_HEIGHT : RUNTIME_NODE_HEIGHT,
+      selectable: true,
+      draggable: false,
+      focusable: true,
+      zIndex: 20,
+    }))
+
+    const actualEdges: Edge[] = graph.edges
+      .filter(edge => nodesById.has(edge.from) && nodesById.has(edge.to))
+      .map(edge => {
+        const handles = resolveHandles(edge.from, edge.to, previewOnly, layout.positions)
+
+        return {
+          id: `${edge.from}--${edge.to}`,
+          source: edge.from,
+          target: edge.to,
+          type: 'default',
+          sourceHandle: handles.sourceHandle,
+          targetHandle: handles.targetHandle,
+          ...getCompactEdgeStyle(edge.state, previewOnly),
+        }
+      })
+
+    const syntheticPreviewEdges: Edge[] = []
+
+    if (previewOnly && nodesById.has('stage1') && roots.some(root => root.id === 'ocr-detect')) {
+      previewBranchRoots.add('ocr-detect')
+      const handles = resolveHandles('stage1', 'ocr-detect', previewOnly, layout.positions)
+
+      syntheticPreviewEdges.push({
+        id: 'stage1--ocr-detect--preview',
+        source: 'stage1',
+        target: 'ocr-detect',
+        type: 'default',
+        sourceHandle: handles.sourceHandle,
+        targetHandle: handles.targetHandle,
+        ...getCompactEdgeStyle('inactive', true),
+      })
+    }
+
+    const rootEdges: Edge[] = roots
+      .filter(root => !previewBranchRoots.has(root.id))
+      .map(root => {
+        const handles = resolveHandles(START_NODE_ID, root.id, previewOnly, layout.positions)
+
+        return {
+          id: `${START_NODE_ID}--${root.id}`,
+          source: START_NODE_ID,
+          target: root.id,
+          type: 'default',
+          sourceHandle: handles.sourceHandle,
+          targetHandle: handles.targetHandle,
+          ...getCompactEdgeStyle(edgeStateFromNodeStatus(root.status), previewOnly),
+        }
+      })
+
+    const terminalEdges: Edge[] = terminals.map(terminal => {
+      const handles = resolveHandles(terminal.id, END_NODE_ID, previewOnly, layout.positions)
+
+      return {
+        id: `${terminal.id}--${END_NODE_ID}`,
+        source: terminal.id,
+        target: END_NODE_ID,
+        type: 'default',
+        sourceHandle: handles.sourceHandle,
+        targetHandle: handles.targetHandle,
+        ...getCompactEdgeStyle(edgeStateFromNodeStatus(terminal.status), previewOnly),
+      }
+    })
+
+    return {
+      nodes: [...anchorNodes, ...workflowNodes],
+      edges: [...rootEdges, ...syntheticPreviewEdges, ...actualEdges, ...terminalEdges],
+      height: layout.height,
+    }
+  }, [
+    getStageShortLabel,
+    getStatusLabel,
+    focusedNodeId,
+    graph,
+    handlePin,
+    locale,
+    pinnedNodeId,
+    previewOnly,
+  ])
+
+  const focusRailContent = useMemo(() => {
+    if (!focusedNode) {
+      return null
+    }
+
+    return {
+      node: focusedNode,
+      code: NODE_CODE[focusedNode.id] ?? focusedNode.id,
+      shortLabel: getStageShortLabel(focusedNode.id as StageShortKey),
+      groupLabel: getMetaLabel(focusedNode.group, locale),
+      hint: resolveNodeHint(focusedNode, locale, previewOnly),
+      statusLabel: getStatusLabel(focusedNode.status as StatusKey),
+      pinned: Boolean(pinnedNode && pinnedNode.id === focusedNode.id),
+    }
+  }, [
+    focusedNode,
+    getStageShortLabel,
+    getStatusLabel,
+    locale,
+    pinnedNode,
+    previewOnly,
+  ])
+
+  const FocusRailIcon = focusRailContent
+    ? (NODE_ICON[focusRailContent.node.id] ?? AudioWaveform)
+    : AudioWaveform
 
   return (
     <div className="space-y-3">
       {showLegend && <WorkflowLegend />}
 
-      <div className="space-y-2.5">
-        {groupedNodes.map(entry => {
-          const isDeliveryLane = entry.lane === 'delivery' && entry.nodes.length === 1
+      <div
+        data-ui-layout="unified-dag"
+        className="overflow-hidden rounded-[30px] border border-slate-200/90 bg-white"
+      >
+        <div
+          className="bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.96),rgba(248,250,252,0.9),rgba(255,255,255,0.95))]"
+          style={{ height: flowModel.height }}
+        >
+          <ReactFlow
+            nodes={flowModel.nodes}
+            edges={flowModel.edges}
+            nodeTypes={NODE_TYPES}
+            fitView
+            fitViewOptions={{ padding: 0.14 }}
+            nodesDraggable={false}
+            nodesConnectable={false}
+            elementsSelectable={false}
+            panOnDrag
+            zoomOnScroll
+            zoomOnPinch
+            zoomOnDoubleClick={false}
+            preventScrolling={false}
+            minZoom={0.55}
+            maxZoom={1.8}
+            proOptions={{ hideAttribution: true }}
+          >
+            <Background
+              variant={BackgroundVariant.Dots}
+              gap={26}
+              size={1}
+              color="#e2e8f0"
+            />
+          </ReactFlow>
+        </div>
 
-          return (
-            <section
-              key={entry.lane}
-              data-ui-tone="neutral"
-              className="rounded-[22px] border border-slate-200/80 bg-white/76 px-3 py-3 shadow-[0_16px_30px_-24px_rgba(15,23,42,0.12)] backdrop-blur-sm"
+        <div className="border-t border-slate-200/80 bg-white px-4 py-3">
+          {focusRailContent ? (
+            <div
+              data-ui-focus-rail="active"
+              className="flex items-start justify-between gap-4"
             >
-              <LaneHeader label={entry.label} count={entry.nodes.length} />
+              <div className="flex min-w-0 items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[15px] border border-slate-200 bg-slate-50 text-slate-600">
+                  <FocusRailIcon size={16} />
+                </div>
 
-              {isDeliveryLane ? (
-                <DeliveryLane
-                  graph={graph}
-                  node={entry.nodes[0]}
-                  selectedNodeId={selectedNodeId}
-                  onNodeSelect={onNodeSelect}
-                />
-              ) : (
-                <CompactLaneFlow
-                  graph={graph}
-                  laneId={entry.lane}
-                  selectedNodeId={selectedNodeId}
-                  onNodeSelect={onNodeSelect}
-                />
-              )}
-            </section>
-          )
-        })}
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2 text-[10px] font-medium uppercase tracking-[0.18em] text-slate-400">
+                    <span>{focusRailContent.code}</span>
+                    <span className="h-1 w-1 rounded-full bg-slate-300" />
+                    <span>{focusRailContent.groupLabel}</span>
+                    {focusRailContent.node.required === false && (
+                      <span className="rounded-full border border-dashed border-slate-200 bg-white px-2 py-0.5 text-[9px] font-semibold tracking-[0.16em] text-slate-500">
+                        {t.workflow.optional}
+                      </span>
+                    )}
+                    {focusRailContent.pinned && (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[9px] font-semibold tracking-[0.16em] text-slate-500">
+                        <Pin size={10} />
+                        {getFocusRailPinnedLabel(locale)}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="mt-1 text-sm font-semibold tracking-tight text-slate-900">
+                    {focusRailContent.shortLabel}
+                  </div>
+
+                  <p className="mt-1 text-sm leading-6 text-slate-600">
+                    {focusRailContent.hint}
+                  </p>
+
+                  {!previewOnly && focusRailContent.node.current_step && (
+                    <div className="mt-2 text-xs font-medium text-slate-500">
+                      {focusRailContent.node.current_step}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex shrink-0 items-center gap-2">
+                {!previewOnly && (
+                  <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                    {focusRailContent.statusLabel}
+                  </span>
+                )}
+
+                {focusRailContent.pinned && (
+                  <button
+                    type="button"
+                    onClick={() => setPinnedNodeId(null)}
+                    className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-medium text-slate-500 transition-colors hover:bg-slate-50"
+                  >
+                    <X size={11} />
+                    {getFocusRailClearLabel(locale)}
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div
+              data-ui-focus-rail="idle"
+              className="flex items-center gap-2 text-xs text-slate-400"
+            >
+              <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-500">
+                <AudioWaveform size={13} />
+              </span>
+              <span>{getFocusRailInstruction(locale)}</span>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

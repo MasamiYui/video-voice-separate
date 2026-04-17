@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it } from 'vitest'
 import { I18nProvider } from '../../../i18n/I18nProvider'
 import type { WorkflowGraph as WorkflowGraphPayload } from '../../../types'
 import { PipelineGraph } from '../PipelineGraph'
@@ -74,6 +74,10 @@ const previewGraph: WorkflowGraphPayload = {
 }
 
 describe('PipelineGraph', () => {
+  afterEach(() => {
+    cleanup()
+  })
+
   it('renders pending template previews inside a zoomable flow canvas without runtime metadata', () => {
     render(
       <I18nProvider>
@@ -81,15 +85,21 @@ describe('PipelineGraph', () => {
       </I18nProvider>,
     )
 
-    expect(screen.getAllByText('音频主干').length).toBeGreaterThan(0)
-    expect(screen.getAllByRole('application').length).toBeGreaterThan(0)
+    const graphRoot = document.querySelector('[data-ui-layout="unified-dag"]')
+
+    expect(graphRoot).not.toBeNull()
+    expect(screen.getAllByRole('application')).toHaveLength(1)
     expect(screen.queryByText('等待中')).not.toBeInTheDocument()
     expect(screen.queryByText('状态')).not.toBeInTheDocument()
     expect(screen.queryByText('进度')).not.toBeInTheDocument()
-    expect(screen.getAllByText('音频主干')[0].closest('section')?.getAttribute('data-ui-tone')).toBe('neutral')
+    expect(graphRoot?.querySelector('[data-ui-band]')).toBeNull()
+    expect(graphRoot?.querySelector('[data-ui-anchor="start"]')).not.toBeNull()
+    expect(graphRoot?.querySelector('[data-ui-anchor="end"]')).not.toBeNull()
     expect(screen.getByText('音频分离').closest('button')?.getAttribute('data-ui-elevation')).toBe('flat')
     expect(screen.getByText('音频分离').closest('button')?.querySelector('.absolute.inset-y-3.left-0')).toBeNull()
-    expect(screen.getAllByText('视频交付')[0].closest('[data-ui-delivery-node="compact"]')?.getAttribute('data-ui-size')).toBe('matched')
+    expect(screen.getAllByText('视频交付')[0].closest('button')?.getAttribute('data-ui-card-size')).toBe('matched')
+    expect(screen.queryByText('拆分人声与背景轨。')).not.toBeInTheDocument()
+    expect(screen.getByText('悬停节点可查看说明，点击节点可锁定。')).toBeInTheDocument()
     expect(screen.queryByText('最终交付包')).not.toBeInTheDocument()
   })
 
@@ -100,13 +110,32 @@ describe('PipelineGraph', () => {
       </I18nProvider>,
     )
 
-    expect(screen.getAllByText('音频主干').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('交付线').length).toBeGreaterThan(0)
+    const graphRoot = document.querySelector('[data-ui-layout="unified-dag"]')
+
+    expect(graphRoot).not.toBeNull()
+    expect(graphRoot?.querySelector('[data-ui-anchor="start"]')).not.toBeNull()
+    expect(graphRoot?.querySelector('[data-ui-anchor="end"]')).not.toBeNull()
     expect(screen.getByText('正在对齐语音片段')).toBeInTheDocument()
-    expect(screen.getByText(/运行中/)).toBeInTheDocument()
-    expect(screen.getAllByText('交付线')[0].closest('section')?.getAttribute('data-ui-tone')).toBe('neutral')
+    expect(screen.getAllByText(/运行中/).length).toBeGreaterThan(0)
     expect(screen.getAllByText('语音转写')[0].closest('button')?.getAttribute('data-ui-elevation')).toBe('flat')
-    expect(screen.getAllByText('视频交付')[0].closest('[data-ui-delivery-node="compact"]')?.getAttribute('data-ui-size')).toBe('matched')
+    expect(screen.getAllByText('视频交付')[0].closest('button')?.getAttribute('data-ui-card-size')).toBe('matched')
     expect(screen.queryByText('最终交付包')).not.toBeInTheDocument()
+  })
+
+  it('reveals node details in the focus rail when hovering a compact node', () => {
+    render(
+      <I18nProvider>
+        <PipelineGraph graph={previewGraph} compact />
+      </I18nProvider>,
+    )
+
+    const audioNode = screen.getAllByText('音频分离').at(-1)?.closest('button')
+
+    expect(audioNode).not.toBeNull()
+    expect(screen.queryByText('拆分人声与背景轨。')).not.toBeInTheDocument()
+
+    fireEvent.mouseEnter(audioNode!)
+
+    expect(screen.getByText('拆分人声与背景轨。')).toBeInTheDocument()
   })
 })
