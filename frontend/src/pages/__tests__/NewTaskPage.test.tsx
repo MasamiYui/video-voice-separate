@@ -82,9 +82,30 @@ describe('NewTaskPage redesigned flow', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /英文字幕版/ }))
 
-    expect(screen.getByText('本次任务将生成：')).toBeInTheDocument()
+    expect(screen.getByText('语言方向')).toBeInTheDocument()
+    expect(screen.getByText('默认导出')).toBeInTheDocument()
+    expect(screen.getByText('处理策略')).toBeInTheDocument()
     expect(screen.getByText('优先干净画面 + 英文字幕')).toBeInTheDocument()
     expect(screen.getByText('OCR 字幕链路、导出预览能力')).toBeInTheDocument()
+    expect(screen.getByText('语言方向').closest('[data-ui-tone="neutral"]')).not.toBeNull()
+  })
+
+  it('stacks the intent section and task summary vertically on step two', async () => {
+    vi.mocked(configApi.getPresets).mockResolvedValue([])
+
+    renderStepTwo()
+
+    const summaryCard = screen.getByText('任务摘要').closest('section')
+    const stepLayout = summaryCard?.parentElement
+    const previewSection = screen.getByText('处理预览').closest('section')
+
+    expect(stepLayout).not.toBeNull()
+    expect(stepLayout?.className).toContain('space-y-6')
+    expect(stepLayout?.className).not.toContain('lg:grid-cols')
+    expect(screen.getAllByText('成品目标').at(-1)?.closest('section')?.className).toContain('space-y-3')
+    expect(screen.getByText('处理预览').closest('section')?.className).toContain('space-y-3')
+    expect(screen.getByText('任务摘要').closest('section')?.className).toContain('space-y-4')
+    expect(previewSection?.querySelector('.rounded-xl.border.border-slate-100.bg-slate-50\\/70')).toBeNull()
   })
 
   it('keeps developer execution controls hidden by default on the creation flow', async () => {

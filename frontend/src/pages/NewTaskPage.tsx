@@ -107,15 +107,27 @@ function Checkbox({ checked, onChange, label }: {
   )
 }
 
-function SectionCard({ title, children, action }: { title: string; children: React.ReactNode; action?: React.ReactNode }) {
+function SectionCard({
+  title,
+  children,
+  action,
+  minimal = false,
+}: {
+  title: string
+  children: React.ReactNode
+  action?: React.ReactNode
+  minimal?: boolean
+}) {
   return (
-    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-2.5">
-        <span className="text-xs font-semibold uppercase tracking-widest text-slate-500">{title}</span>
+    <section className={minimal ? 'space-y-3' : 'overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm'}>
+      <div className={minimal ? 'flex items-center justify-between gap-3' : 'flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-2.5'}>
+        <span className={minimal ? 'text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400' : 'text-xs font-semibold uppercase tracking-widest text-slate-500'}>
+          {title}
+        </span>
         {action}
       </div>
-      <div className="space-y-4 p-4">{children}</div>
-    </div>
+      <div className={minimal ? 'space-y-4' : 'space-y-4 p-4'}>{children}</div>
+    </section>
   )
 }
 
@@ -192,42 +204,82 @@ function SegmentedControl<T extends string>({
   )
 }
 
+interface SummaryItem {
+  label: string
+  value: string
+}
+
 function SummaryCard({
   title,
+  items,
   lines,
   tip,
   warning,
   cta,
+  minimal = false,
 }: {
   title: string
+  items?: SummaryItem[]
   lines: string[]
   tip?: string
   warning?: string
   cta?: React.ReactNode
+  minimal?: boolean
 }) {
+  const minimalItems = minimal
+    ? items ?? lines.map((line, index) => ({ label: `item-${index}`, value: line }))
+    : []
+
   return (
-    <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <section className={minimal ? 'space-y-4' : 'space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm'}>
       <div>
-        <div className="text-xs font-semibold uppercase tracking-widest text-slate-400">{title}</div>
-        <div className="mt-3 space-y-2 text-sm text-slate-700">
-          <div className="font-semibold text-slate-900">本次任务将生成：</div>
-          {lines.map(line => (
-            <div key={line}>{line}</div>
-          ))}
+        <div className={minimal ? 'text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400' : 'text-xs font-semibold uppercase tracking-widest text-slate-400'}>
+          {title}
         </div>
+        {minimal ? (
+          <div className="mt-3 space-y-3">
+            <div className="text-sm font-semibold text-slate-900">本次任务将生成：</div>
+            <div
+              data-ui-tone="neutral"
+              className="overflow-hidden rounded-[20px] border border-slate-200/80 bg-white/80 p-1 shadow-[0_14px_28px_-24px_rgba(15,23,42,0.14)] backdrop-blur-sm"
+            >
+              <div className="grid gap-px overflow-hidden rounded-[16px] bg-slate-200/70 md:grid-cols-3">
+                {minimalItems.map(item => (
+                  <div key={item.label} className="bg-white/90 px-4 py-3">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+                      {item.label}
+                    </div>
+                    <div className="mt-1.5 text-sm font-medium leading-6 text-slate-800">
+                      {item.value}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-3 space-y-2 text-sm text-slate-700">
+            <div className="font-semibold text-slate-900">本次任务将生成：</div>
+            {lines.map(line => (
+              <div key={line}>{line}</div>
+            ))}
+          </div>
+        )}
       </div>
       {tip && (
-        <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-700">
+        <div className={minimal ? 'rounded-[18px] border border-sky-100 bg-sky-50/80 px-4 py-3 text-sm text-sky-800' : 'rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-700'}>
+          {minimal && <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-sky-500">说明</div>}
           {tip}
         </div>
       )}
       {warning && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+        <div className={minimal ? 'rounded-[18px] border border-slate-200/80 bg-white/80 px-4 py-3 text-sm text-slate-700 shadow-[0_12px_24px_-28px_rgba(15,23,42,0.22)] backdrop-blur-sm' : 'rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700'}>
+          {minimal && <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">注意</div>}
           {warning}
         </div>
       )}
       {cta}
-    </div>
+    </section>
   )
 }
 
@@ -395,9 +447,9 @@ export function NewTaskPage() {
   )
 
   const stepTwo = (
-    <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+    <div className="space-y-6">
       <div className="space-y-5">
-        <SectionCard title={locale === 'zh-CN' ? '成品目标' : 'Intent'}>
+        <SectionCard title={locale === 'zh-CN' ? '成品目标' : 'Intent'} minimal>
           <div className="grid gap-4 md:grid-cols-2">
             {getIntentOptions(locale).map(option => (
               <IntentCard
@@ -414,22 +466,23 @@ export function NewTaskPage() {
 
         <SectionCard
           title={locale === 'zh-CN' ? '处理预览' : 'Workflow Preview'}
+          minimal
           action={
             <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-medium text-slate-500 shadow-sm ring-1 ring-slate-200">
               {normalizeTemplateId(config.template)}
             </span>
           }
         >
-          <div className="rounded-xl border border-slate-100 bg-slate-50/70 px-3 py-3">
-            <PipelineGraph graph={previewGraph} templateId={normalizeTemplateId(config.template)} compact />
-          </div>
+          <PipelineGraph graph={previewGraph} templateId={normalizeTemplateId(config.template)} compact />
         </SectionCard>
       </div>
       <SummaryCard
         title={locale === 'zh-CN' ? '任务摘要' : 'Task Summary'}
+        items={summary.items}
         lines={summary.lines}
         tip={summary.tip}
         warning={summary.warning}
+        minimal
       />
     </div>
   )
@@ -608,6 +661,7 @@ export function NewTaskPage() {
 
       <SummaryCard
         title={locale === 'zh-CN' ? '任务摘要' : 'Task Summary'}
+        items={summary.items}
         lines={summary.lines}
         tip={`${locale === 'zh-CN' ? '当前成品目标' : 'Current intent'}：${getOutputIntentLabel(outputIntent, locale)}`}
         warning={qualityPreset === 'fast'
@@ -681,6 +735,7 @@ export function NewTaskPage() {
 
       <SummaryCard
         title={locale === 'zh-CN' ? '任务摘要' : 'Task Summary'}
+        items={summary.items}
         lines={summary.lines}
         tip={summary.tip}
       />
@@ -904,49 +959,87 @@ function buildTaskSummary(
   const direction = `${getLanguageLabel(sourceLang)} → ${getLanguageLabel(targetLang)}`
 
   if (locale !== 'zh-CN') {
+    const detail = getIntentSummaryDetails(intent, 'en-US')
     return {
       lines: [
         `Language: ${direction}`,
-        ...getIntentSummaryLines(intent, 'en-US'),
+        detail.primary,
+        detail.secondary,
+      ],
+      items: [
+        { label: 'Language', value: direction },
+        { label: 'Default Output', value: detail.primary },
+        { label: 'Strategy', value: detail.secondary },
       ],
       tip: getIntentTip(intent, 'en-US'),
       warning: undefined,
     }
   }
 
+  const detail = getIntentSummaryDetails(intent, 'zh-CN')
   return {
     lines: [
       `语言：${direction}`,
-      ...getIntentSummaryLines(intent, 'zh-CN'),
+      detail.primary,
+      detail.secondary,
+    ],
+    items: [
+      { label: '语言方向', value: direction },
+      { label: '默认导出', value: detail.primary },
+      { label: '处理策略', value: detail.secondary },
     ],
     tip: getIntentTip(intent, 'zh-CN'),
     warning: intent === 'english_subtitle' ? '如无干净画面，后续会提示你补跑擦字幕。' : undefined,
   }
 }
 
-function getIntentSummaryLines(intent: TaskOutputIntent, locale: 'zh-CN' | 'en-US'): string[] {
+function getIntentSummaryDetails(intent: TaskOutputIntent, locale: 'zh-CN' | 'en-US') {
   if (locale === 'en-US') {
     switch (intent) {
       case 'english_subtitle':
-        return ['Default export: clean plate + English subtitles', 'OCR subtitle chain and preview will be prepared']
+        return {
+          primary: 'Default export: clean plate + English subtitles',
+          secondary: 'OCR subtitle chain and preview will be prepared',
+        }
       case 'bilingual_review':
-        return ['Default export: original video + bilingual subtitles', 'OCR subtitle chain will be prepared']
+        return {
+          primary: 'Default export: original video + bilingual subtitles',
+          secondary: 'OCR subtitle chain will be prepared',
+        }
       case 'fast_validation':
-        return ['Default export: preview-first validation output', 'The system will prioritize speed']
+        return {
+          primary: 'Default export: preview-first validation output',
+          secondary: 'The system will prioritize speed',
+        }
       default:
-        return ['Default export: dubbed master video', 'The system will prioritize a formal dubbed output']
+        return {
+          primary: 'Default export: dubbed master video',
+          secondary: 'The system will prioritize a formal dubbed output',
+        }
     }
   }
 
   switch (intent) {
     case 'english_subtitle':
-      return ['优先干净画面 + 英文字幕', 'OCR 字幕链路、导出预览能力']
+      return {
+        primary: '优先干净画面 + 英文字幕',
+        secondary: 'OCR 字幕链路、导出预览能力',
+      }
     case 'bilingual_review':
-      return ['原视频 + 英文字幕 + 配音音轨', 'OCR 字幕链路、双语导出能力']
+      return {
+        primary: '原视频 + 英文字幕 + 配音音轨',
+        secondary: 'OCR 字幕链路、双语导出能力',
+      }
     case 'fast_validation':
-      return ['优先 preview 可看片段', '系统会优先选择更快的默认方案']
+      return {
+        primary: '优先 preview 可看片段',
+        secondary: '系统会优先选择更快的默认方案',
+      }
     default:
-      return ['正式配音版导出', '系统会优先准备正式配音成片']
+      return {
+        primary: '正式配音版导出',
+        secondary: '系统会优先准备正式配音成片',
+      }
   }
 }
 

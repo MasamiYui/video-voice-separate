@@ -1,5 +1,6 @@
 import { buildGraphFromStages } from '../../lib/workflowPreview'
 import type { TaskConfig, TaskStage, WorkflowGraph as WorkflowGraphPayload } from '../../types'
+import { WorkflowCompactCardGraph } from '../workflow/WorkflowCompactCardGraph'
 import { WorkflowFlowGraph } from '../workflow/WorkflowFlowGraph'
 
 interface PipelineGraphProps {
@@ -23,12 +24,22 @@ export function PipelineGraph({
 }: PipelineGraphProps) {
   const resolvedGraph = graph ?? buildGraphFromStages(stages, templateId)
 
+  if (compact) {
+    return (
+      <WorkflowCompactCardGraph
+        graph={resolvedGraph}
+        selectedNodeId={activeStage}
+        onNodeSelect={onStageClick}
+        showLegend={showLegend}
+      />
+    )
+  }
+
   return (
     <WorkflowFlowGraph
       graph={resolvedGraph}
       selectedNodeId={activeStage}
       onNodeSelect={onStageClick}
-      compact={compact}
       showLegend={showLegend}
     />
   )
