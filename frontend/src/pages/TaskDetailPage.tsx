@@ -32,7 +32,6 @@ import { useWorkflowGraph } from '../hooks/useWorkflowGraph'
 import { useWorkflowRuntimeUpdates } from '../hooks/useWorkflowRuntimeUpdates'
 import { useI18n } from '../i18n/useI18n'
 import { getExportProfileLabel, getOutputIntentLabel, getQualityPresetLabel } from '../lib/taskPresentation'
-import { formatBytes } from '../lib/utils'
 import { resolveActiveStageId, resolveRerunStage } from './taskDetailSelection'
 import type {
   Artifact,
@@ -56,6 +55,9 @@ const ARTIFACT_PREFIX: Record<string, string[]> = {
   'subtitle-erase': ['subtitle-erase/'],
   'task-g': ['task-g/', 'delivery/', 'preview/'],
 }
+
+const DOWNLOAD_ICON_BUTTON_CLASS =
+  'inline-flex h-5 w-5 shrink-0 items-center justify-center text-slate-400 transition-colors hover:text-slate-600 group-hover:text-slate-600'
 
 const PROFILE_CONFIG: Record<
   TaskExportProfile,
@@ -535,12 +537,16 @@ export function TaskDetailPage() {
                       target="_blank"
                       rel="noreferrer"
                       className="flex items-center justify-between gap-4 py-2 text-sm text-slate-700 transition-colors hover:text-slate-900"
+                      aria-label={`下载${file.label}`}
+                      title={`下载${file.label}`}
                     >
                       <div className="min-w-0">
                         <div className="font-medium">{file.label}</div>
                         <div className="mt-0.5 truncate text-xs text-slate-400">{file.path}</div>
                       </div>
-                      <Download size={14} className="shrink-0 text-slate-400" />
+                      <span aria-hidden="true" className={DOWNLOAD_ICON_BUTTON_CLASS}>
+                        <Download size={12} />
+                      </span>
                     </a>
                   ))}
                 </div>
@@ -551,13 +557,49 @@ export function TaskDetailPage() {
           {/* 成品素材清单：紧凑 checklist */}
           <div className="mt-6 border-t border-slate-100 pt-5">
             {(() => {
-              const assetItems: Array<{ icon: LucideIcon; title: string; description: string; entry: TaskAssetEntry }> = [
-                { icon: Film, title: '原始视频', description: '所有任务的基础输入素材', entry: task.asset_summary.video.original },
-                { icon: Eraser, title: '干净画面', description: '英文字幕版会优先使用', entry: task.asset_summary.video.clean },
-                { icon: Mic, title: '正式配音音轨', description: '用于正式成片导出', entry: task.asset_summary.audio.dub },
-                { icon: Headphones, title: '预览混音音轨', description: '用于快速验证版导出', entry: task.asset_summary.audio.preview },
-                { icon: ScanText, title: 'OCR 英文字幕', description: '适合画面原有中文字幕翻译', entry: task.asset_summary.subtitles.ocr_translated },
-                { icon: Captions, title: 'ASR 英文字幕', description: '适合语音转字幕链路', entry: task.asset_summary.subtitles.asr_translated },
+              const assetItems: Array<{ icon: LucideIcon; title: string; description: string; entry: TaskAssetEntry; href: string | null }> = [
+                {
+                  icon: Film,
+                  title: '原始视频',
+                  description: '所有任务的基础输入素材',
+                  entry: task.asset_summary.video.original,
+                  href: getAssetDownloadHref(task, task.asset_summary.video.original, 'input'),
+                },
+                {
+                  icon: Eraser,
+                  title: '干净画面',
+                  description: '英文字幕版会优先使用',
+                  entry: task.asset_summary.video.clean,
+                  href: getAssetDownloadHref(task, task.asset_summary.video.clean),
+                },
+                {
+                  icon: Mic,
+                  title: '正式配音音轨',
+                  description: '用于正式成片导出',
+                  entry: task.asset_summary.audio.dub,
+                  href: getAssetDownloadHref(task, task.asset_summary.audio.dub),
+                },
+                {
+                  icon: Headphones,
+                  title: '预览混音音轨',
+                  description: '用于快速验证版导出',
+                  entry: task.asset_summary.audio.preview,
+                  href: getAssetDownloadHref(task, task.asset_summary.audio.preview),
+                },
+                {
+                  icon: ScanText,
+                  title: 'OCR 英文字幕',
+                  description: '适合画面原有中文字幕翻译',
+                  entry: task.asset_summary.subtitles.ocr_translated,
+                  href: getAssetDownloadHref(task, task.asset_summary.subtitles.ocr_translated),
+                },
+                {
+                  icon: Captions,
+                  title: 'ASR 英文字幕',
+                  description: '适合语音转字幕链路',
+                  entry: task.asset_summary.subtitles.asr_translated,
+                  href: getAssetDownloadHref(task, task.asset_summary.subtitles.asr_translated),
+                },
               ]
               const readyCount = assetItems.filter(r => r.entry.status === 'available').length
               return (
@@ -577,6 +619,7 @@ export function TaskDetailPage() {
                         title={item.title}
                         description={item.description}
                         entry={item.entry}
+                        href={item.href}
                       />
                     ))}
                   </div>
@@ -926,6 +969,22 @@ function getArtifactHref(taskId: string, path: string): string {
   return `/api/tasks/${taskId}/artifacts/${path}`
 }
 
+function getTaskInputHref(taskId: string): string {
+  return `/api/tasks/${taskId}/input-file`
+}
+
+function getAssetDownloadHref(task: Task, entry: TaskAssetEntry, kind: 'artifact' | 'input' = 'artifact'): string | null {
+  if (entry.status !== 'available' || !entry.path) {
+    return null
+  }
+
+  if (kind === 'input') {
+    return getTaskInputHref(task.id)
+  }
+
+  return getArtifactHref(task.id, entry.path)
+}
+
 function isUserArtifact(artifact: Artifact) {
   return !artifact.path.endsWith('.ass') && !artifact.path.includes('.delivery-subtitles/')
 }
@@ -963,55 +1022,6 @@ function ReadinessPill({ status }: { status: Task['export_readiness']['status'] 
   )
 }
 
-function QuickInfoChip({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="whitespace-nowrap rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-600 shadow-sm">
-      <span className="text-slate-400">{label}：</span>
-      <span className="font-medium text-slate-700">{value}</span>
-    </div>
-  )
-}
-
-function AssetStatusRow({
-  icon: Icon,
-  title,
-  description,
-  entry,
-}: {
-  icon: LucideIcon
-  title: string
-  description: string
-  entry: TaskAssetEntry
-}) {
-  const isAvailable = entry.status === 'available'
-  return (
-    <li className="flex items-center gap-4 px-5 py-3.5">
-      <div
-        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
-          isAvailable ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-50 text-slate-400'
-        }`}
-      >
-        <Icon size={16} />
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-2">
-            <span className="truncate text-sm font-medium text-slate-900">{title}</span>
-            <span className="truncate text-xs text-slate-400">· {description}</span>
-          </div>
-          <AssetStatusPill status={entry.status} />
-        </div>
-        <div
-          className="mt-1 truncate font-mono text-[11px] text-slate-400"
-          title={entry.path ?? undefined}
-        >
-          {entry.path ?? '当前还没有生成对应文件'}
-        </div>
-      </div>
-    </li>
-  )
-}
-
 function AssetStatusPill({ status }: { status: TaskAssetEntry['status'] }) {
   const cls = {
     available: 'border-emerald-200 bg-emerald-50 text-emerald-700',
@@ -1039,11 +1049,13 @@ function AssetCheckRow({
   title,
   description,
   entry,
+  href,
 }: {
   icon: LucideIcon
   title: string
   description: string
   entry: TaskAssetEntry
+  href: string | null
 }) {
   const isAvailable = entry.status === 'available'
   const isFailed = entry.status === 'failed'
@@ -1057,7 +1069,18 @@ function AssetCheckRow({
         size={13}
         className={isAvailable ? 'text-emerald-500' : isFailed ? 'text-rose-400' : isBuilding ? 'text-blue-400' : 'text-slate-300'}
       />
-      <span className={`text-sm ${isAvailable ? 'text-slate-700' : 'text-slate-400'}`}>{title}</span>
+      <span className={`min-w-0 flex-1 truncate text-sm ${isAvailable ? 'text-slate-700' : 'text-slate-400'}`}>{title}</span>
+      {href && (
+        <a
+          href={href}
+          download
+          className={DOWNLOAD_ICON_BUTTON_CLASS}
+          aria-label={`下载${title}`}
+          title={`下载${title}`}
+        >
+          <Download size={12} />
+        </a>
+      )}
       {!isAvailable && (
         <span className={`text-xs ${isFailed ? 'text-rose-500' : isBuilding ? 'text-blue-500' : 'text-slate-400'}`}>
           {isFailed ? '失败' : isBuilding ? '生成中' : '缺失'}

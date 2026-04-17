@@ -76,6 +76,50 @@ def test_task_read_exposes_delivery_config(tmp_path: Path) -> None:
     assert payload["delivery_config"]["subtitle_font"] == "Source Han Sans"
 
 
+def test_task_input_file_route_downloads_registered_source_video(tmp_path: Path) -> None:
+    db_path = tmp_path / "delivery-input-file.db"
+    engine = create_engine(
+        f"sqlite:///{db_path}",
+        connect_args={"check_same_thread": False},
+    )
+    SQLModel.metadata.create_all(engine)
+
+    input_video = tmp_path / "source.mp4"
+    input_video.write_bytes(b"demo-video")
+
+    with Session(engine) as session:
+        session.add(
+            Task(
+                id="task-input-file",
+                name="Input File Download",
+                status="succeeded",
+                input_path=str(input_video),
+                output_root=str(tmp_path / "output"),
+                source_lang="zh",
+                target_lang="en",
+                config={"pipeline": {"template": "asr-dub-basic"}},
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
+            )
+        )
+        session.commit()
+
+    def override_session():
+        with Session(engine) as session:
+            yield session
+
+    app.dependency_overrides[get_session] = override_session
+    try:
+        client = TestClient(app)
+        response = client.get("/api/tasks/task-input-file/input-file")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.content == b"demo-video"
+    assert response.headers["content-type"] == "video/mp4"
+
+
 def test_delivery_compose_updates_delivery_config_only(tmp_path: Path, monkeypatch) -> None:
     from translip.server.routes import delivery as delivery_routes
 

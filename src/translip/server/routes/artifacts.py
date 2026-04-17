@@ -13,6 +13,27 @@ from ..models import Task
 router = APIRouter(prefix="/api/tasks", tags=["artifacts"])
 
 
+@router.get("/{task_id}/input-file")
+def get_task_input_file(
+    task_id: str,
+    session: Session = Depends(get_session),
+):
+    task = session.get(Task, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    input_path = Path(task.input_path).resolve()
+    if not input_path.exists() or not input_path.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    media_type, _ = mimetypes.guess_type(str(input_path))
+    return FileResponse(
+        path=input_path,
+        filename=input_path.name,
+        media_type=media_type or "application/octet-stream",
+    )
+
+
 @router.get("/{task_id}/artifacts/{artifact_path:path}")
 def get_artifact(
     task_id: str,
