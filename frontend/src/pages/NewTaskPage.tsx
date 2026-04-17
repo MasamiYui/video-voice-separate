@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronLeft, ChevronRight, Cpu, Loader2 } from 'lucide-react'
 import { tasksApi } from '../api/tasks'
 import { configApi, systemApi } from '../api/config'
-import { PageContainer } from '../components/layout/PageContainer'
+import { APP_CONTENT_MAX_WIDTH, PageContainer } from '../components/layout/PageContainer'
 import { buildTemplatePreviewGraph } from '../lib/workflowPreview'
 import { PipelineGraph } from '../components/pipeline/PipelineGraph'
 import { getOutputIntentLabel, getQualityPresetLabel } from '../lib/taskPresentation'
@@ -739,7 +739,7 @@ export function NewTaskPage() {
   const stepContent = [stepOne, stepTwo, stepThree, stepFour]
 
   return (
-    <PageContainer className="max-w-6xl">
+    <PageContainer className={APP_CONTENT_MAX_WIDTH}>
       <h1 className="mb-6 text-2xl font-bold text-slate-900">{t.newTask.title}</h1>
 
       <div className="mb-8 flex items-center">

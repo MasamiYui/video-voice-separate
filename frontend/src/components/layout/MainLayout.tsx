@@ -4,7 +4,7 @@ import { Header } from './Header'
 
 export function MainLayout() {
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-white">
       <Sidebar />
       <Header />
       <main className="ml-[220px] pt-16 min-h-screen">

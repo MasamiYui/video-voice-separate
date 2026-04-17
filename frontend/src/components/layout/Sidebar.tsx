@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
   AudioLines,
@@ -32,12 +32,7 @@ export function Sidebar() {
   const isNewTaskRoute = currentPath === '/tasks/new' || currentPath.startsWith('/tasks/new/')
   const isToolsRoute = currentPath === '/tools' || currentPath.startsWith('/tools/')
   const [toolsExpanded, setToolsExpanded] = useState(isToolsRoute)
-
-  useEffect(() => {
-    if (isToolsRoute) {
-      setToolsExpanded(true)
-    }
-  }, [isToolsRoute])
+  const toolsOpen = isToolsRoute || toolsExpanded
 
   const navItems = [
     {
@@ -78,15 +73,18 @@ export function Sidebar() {
   ]
 
   return (
-    <aside className="fixed left-0 top-0 h-full w-[220px] bg-slate-900 flex flex-col z-40">
+    <aside className="fixed left-0 top-0 z-40 flex h-full w-[220px] flex-col border-r border-slate-200/80 bg-[#F5F7FB]">
       {/* Logo area */}
-      <div className="flex items-center gap-3 px-5 py-5 border-b border-slate-800">
-        <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center shrink-0">
+      <div
+        data-ui-sidebar-brand=""
+        className="flex h-16 items-center gap-3 border-b border-slate-200/80 px-5"
+      >
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 shadow-[0_12px_24px_-18px_rgba(37,99,235,0.85)]">
           <Cpu size={16} className="text-white" />
         </div>
         <div>
-          <div className="text-white font-semibold text-sm leading-tight">Translip</div>
-          <div className="text-slate-400 text-xs leading-tight">{t.nav.subtitle}</div>
+          <div className="text-sm font-semibold leading-tight text-slate-900">Translip</div>
+          <div className="text-xs leading-tight text-slate-500">{t.nav.subtitle}</div>
         </div>
       </div>
 
@@ -98,10 +96,10 @@ export function Sidebar() {
             to={to}
             aria-current={isActive ? 'page' : undefined}
             className={cn(
-              'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+              'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors',
               isActive
-                ? 'bg-blue-600 text-white'
-                : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100',
+                ? 'bg-blue-600 text-white shadow-[0_10px_24px_-18px_rgba(37,99,235,0.95)]'
+                : 'text-slate-600 hover:bg-white hover:text-slate-900',
             )}
           >
             <Icon size={16} />
@@ -116,22 +114,22 @@ export function Sidebar() {
             navigate('/tools')
           }}
           className={cn(
-            'flex w-full items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+            'flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors',
             isToolsRoute
-              ? 'bg-blue-600 text-white'
-              : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100',
+              ? 'bg-blue-600 text-white shadow-[0_10px_24px_-18px_rgba(37,99,235,0.95)]'
+              : 'text-slate-600 hover:bg-white hover:text-slate-900',
           )}
         >
           <Wrench size={16} />
           {t.atomicTools.title}
           <ChevronDown
             size={14}
-            className={cn('ml-auto transition-transform', toolsExpanded && 'rotate-180')}
+            className={cn('ml-auto transition-transform', toolsOpen && 'rotate-180')}
           />
         </button>
 
-        {toolsExpanded && (
-          <div className="ml-4 space-y-1 border-l border-slate-800 pl-3">
+        {toolsOpen && (
+          <div className="ml-4 space-y-1 border-l border-slate-200 pl-3">
             {toolNavItems.map(({ to, label, icon: Icon }) => {
               const isActive = currentPath === to
               return (
@@ -142,8 +140,8 @@ export function Sidebar() {
                   className={cn(
                     'flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition-colors',
                     isActive
-                      ? 'bg-slate-800 text-slate-50'
-                      : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100',
+                      ? 'bg-white text-blue-700 ring-1 ring-blue-100 shadow-sm'
+                      : 'text-slate-500 hover:bg-white hover:text-slate-900',
                   )}
                 >
                   <Icon size={14} />
@@ -156,8 +154,8 @@ export function Sidebar() {
       </nav>
 
       {/* Footer */}
-      <div className="px-5 py-4 border-t border-slate-800">
-        <div className="text-slate-500 text-xs">v0.1.0</div>
+      <div className="border-t border-slate-200/80 px-5 py-4">
+        <div className="text-xs text-slate-400">v0.1.0</div>
       </div>
     </aside>
   )

@@ -20,10 +20,15 @@ afterEach(() => {
 
 describe('Sidebar', () => {
   it('highlights only the new task entry on the new task page', () => {
-    renderSidebar('/tasks/new')
+    const { container } = renderSidebar('/tasks/new')
 
+    expect(container.firstChild).toHaveClass('bg-[#F5F7FB]')
     expect(screen.getByRole('link', { name: '任务列表' })).not.toHaveClass('bg-blue-600')
     expect(screen.getByRole('link', { name: '新建任务' })).toHaveClass('bg-blue-600')
+    expect(screen.getByRole('link', { name: '任务列表' })).toHaveClass('text-slate-600')
+    expect(screen.getByText('Pipeline Manager')).toHaveClass('text-slate-500')
+    expect(screen.getByText('v0.1.0')).toHaveClass('text-slate-400')
+    expect(container.querySelector('[data-ui-sidebar-brand]')).toHaveClass('h-16')
   })
 
   it('highlights the task list entry on the task list page', () => {

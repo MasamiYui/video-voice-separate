@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
+import { APP_CONTENT_MAX_WIDTH } from '../../components/layout/PageContainer'
 import { I18nProvider } from '../../i18n/I18nProvider'
 import { DashboardPage } from '../DashboardPage'
 
@@ -28,6 +29,6 @@ describe('DashboardPage layout', () => {
     )
 
     expect(screen.getByRole('heading', { name: '仪表盘' })).toBeInTheDocument()
-    expect(container.firstChild).toHaveClass('max-w-[112rem]')
+    expect(container.firstChild).toHaveClass(APP_CONTENT_MAX_WIDTH)
   })
 })

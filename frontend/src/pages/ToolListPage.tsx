@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { atomicToolsApi } from '../api/atomic-tools'
 import { ToolCard } from '../components/atomic-tools/ToolCard'
-import { PageContainer } from '../components/layout/PageContainer'
+import { APP_CONTENT_MAX_WIDTH, PageContainer } from '../components/layout/PageContainer'
 import { useI18n } from '../i18n/useI18n'
 
 const CATEGORY_ORDER = ['audio', 'speech', 'video'] as const
@@ -20,7 +20,7 @@ export function ToolListPage() {
   })).filter(group => group.tools.length > 0)
 
   return (
-    <PageContainer className="space-y-8">
+    <PageContainer className={`${APP_CONTENT_MAX_WIDTH} space-y-8`}>
       <section className="rounded-[2rem] border border-slate-200 bg-white px-6 py-8">
         <div className="max-w-3xl space-y-3">
           <div className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-600">

@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { tasksApi } from '../api/tasks'
-import { PageContainer } from '../components/layout/PageContainer'
+import { APP_CONTENT_MAX_WIDTH, PageContainer } from '../components/layout/PageContainer'
 import { StatusBadge } from '../components/shared/StatusBadge'
 import { ProgressBar } from '../components/shared/ProgressBar'
 import { PipelineGraph } from '../components/pipeline/PipelineGraph'
@@ -73,7 +73,7 @@ export function DashboardPage() {
     .slice(0, 5)
 
   return (
-    <PageContainer className="max-w-[112rem] space-y-6">
+    <PageContainer className={`${APP_CONTENT_MAX_WIDTH} space-y-6`}>
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{t.dashboard.title}</h1>
         <Link

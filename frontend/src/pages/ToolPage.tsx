@@ -6,7 +6,7 @@ import { atomicToolsApi } from '../api/atomic-tools'
 import { FileUploadZone } from '../components/atomic-tools/FileUploadZone'
 import { ResultPanel } from '../components/atomic-tools/ResultPanel'
 import { ToolProgressBar } from '../components/atomic-tools/ToolProgressBar'
-import { PageContainer } from '../components/layout/PageContainer'
+import { APP_CONTENT_MAX_WIDTH, PageContainer } from '../components/layout/PageContainer'
 import { useAtomicTool } from '../hooks/useAtomicTool'
 import { useI18n } from '../i18n/useI18n'
 import { readAtomicToolPrefill } from '../lib/atomicToolPrefill'
@@ -69,7 +69,7 @@ export function ToolPage() {
 
   if (!tool) {
     return (
-      <PageContainer>
+      <PageContainer className={APP_CONTENT_MAX_WIDTH}>
         <div className="rounded-3xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
           {t.common.loading}
         </div>
@@ -91,7 +91,7 @@ export function ToolPage() {
   }
 
   return (
-    <PageContainer className="space-y-6">
+    <PageContainer className={`${APP_CONTENT_MAX_WIDTH} space-y-6`}>
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <Link to="/tools" className="mb-2 inline-flex items-center gap-2 text-sm text-slate-500">

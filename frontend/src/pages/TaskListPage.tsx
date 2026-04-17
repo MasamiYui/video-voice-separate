@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
 import { PlusCircle, Search, Trash2 } from 'lucide-react'
 import { tasksApi } from '../api/tasks'
-import { PageContainer } from '../components/layout/PageContainer'
+import { APP_CONTENT_MAX_WIDTH, PageContainer } from '../components/layout/PageContainer'
 import { StatusBadge } from '../components/shared/StatusBadge'
 import { ProgressBar } from '../components/shared/ProgressBar'
 import type { Task } from '../types'
@@ -64,7 +64,7 @@ export function TaskListPage() {
   }
 
   return (
-    <PageContainer className="max-w-5xl space-y-5">
+    <PageContainer className={`${APP_CONTENT_MAX_WIDTH} space-y-5`}>
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-slate-900">{t.tasks.title}</h1>

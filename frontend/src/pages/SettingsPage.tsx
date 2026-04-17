@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { systemApi } from '../api/config'
-import { PageContainer } from '../components/layout/PageContainer'
+import { APP_CONTENT_MAX_WIDTH, PageContainer } from '../components/layout/PageContainer'
 import { formatBytes } from '../lib/utils'
 import { CheckCircle, XCircle } from 'lucide-react'
 import { useI18n } from '../i18n/useI18n'
@@ -13,7 +13,7 @@ export function SettingsPage() {
   })
 
   return (
-    <PageContainer className="max-w-3xl">
+    <PageContainer className={APP_CONTENT_MAX_WIDTH}>
       <h1 className="mb-6 text-2xl font-semibold tracking-tight text-slate-900">{t.settings.title}</h1>
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
