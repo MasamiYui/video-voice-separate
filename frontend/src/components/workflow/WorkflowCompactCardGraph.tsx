@@ -158,7 +158,7 @@ function CompactNodeChrome({
       data-ui-card-size="matched"
       data-ui-node-role={node.group === 'delivery' ? 'terminal' : 'workflow'}
       className={cn(
-        'group relative flex h-full w-full items-center gap-3 overflow-hidden rounded-[22px] border px-3 py-3 text-left transition-colors duration-200',
+        'group relative flex h-full w-full overflow-hidden rounded-[22px] border px-3 py-3 text-left transition-colors duration-200',
         STATUS_STYLES[node.status],
         'cursor-pointer',
         focused && 'ring-2 ring-sky-300/80 ring-offset-2 ring-offset-white',
@@ -176,22 +176,29 @@ function CompactNodeChrome({
         </span>
       )}
 
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[15px] border border-slate-200 bg-white text-current">
-        <Icon size={16} />
-      </div>
+      <div className={cn('min-w-0 flex-1', !previewOnly && 'pr-16')}>
+        <div className="flex items-start gap-2.5">
+          <span
+            data-ui-node-icon="corner"
+            className="mt-0.5 inline-flex shrink-0 items-center justify-center text-current/72"
+          >
+            <Icon size={13} strokeWidth={2.1} />
+          </span>
 
-      <div className="min-w-0 flex-1">
-        <div className="text-[10px] font-medium uppercase tracking-[0.22em] text-current/42">
-          {NODE_CODE[node.id] ?? node.id}
-        </div>
+          <div className="min-w-0">
+            <div className="text-[10.5px] font-medium uppercase tracking-[0.2em] text-current/42">
+              {NODE_CODE[node.id] ?? node.id}
+            </div>
 
-        <div
-          className={cn(
-            'font-semibold leading-tight tracking-tight text-current',
-            previewOnly ? 'mt-1 text-[15px]' : 'mt-1 pr-16 text-[15px]',
-          )}
-        >
-          {shortLabel}
+            <div
+              className={cn(
+                'font-semibold leading-tight tracking-tight text-current',
+                previewOnly ? 'mt-1 text-[15.75px]' : 'mt-1 text-[15.75px]',
+              )}
+            >
+              {shortLabel}
+            </div>
+          </div>
         </div>
 
         {showProgress && (

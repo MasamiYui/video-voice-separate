@@ -1,7 +1,6 @@
-import { buildGraphFromStages } from '../../lib/workflowPreview'
+import { buildGraphFromStages, normalizeWorkflowGraph } from '../../lib/workflowPreview'
 import type { TaskConfig, TaskStage, WorkflowGraph as WorkflowGraphPayload } from '../../types'
 import { WorkflowCompactCardGraph } from '../workflow/WorkflowCompactCardGraph'
-import { WorkflowFlowGraph } from '../workflow/WorkflowFlowGraph'
 
 interface PipelineGraphProps {
   stages?: TaskStage[]
@@ -22,7 +21,8 @@ export function PipelineGraph({
   showLegend = false,
   templateId = 'asr-dub-basic',
 }: PipelineGraphProps) {
-  const resolvedGraph = graph ?? buildGraphFromStages(stages, templateId)
+  const baseGraph = graph ?? buildGraphFromStages(stages, templateId)
+  const resolvedGraph = !compact && graph ? normalizeWorkflowGraph(baseGraph) : baseGraph
 
   if (compact) {
     return (
@@ -36,7 +36,7 @@ export function PipelineGraph({
   }
 
   return (
-    <WorkflowFlowGraph
+    <WorkflowCompactCardGraph
       graph={resolvedGraph}
       selectedNodeId={activeStage}
       onNodeSelect={onStageClick}

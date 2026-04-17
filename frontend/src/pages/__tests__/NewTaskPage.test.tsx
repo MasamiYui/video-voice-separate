@@ -138,7 +138,19 @@ describe('NewTaskPage redesigned flow', () => {
 
     renderReviewStep()
 
+    const previewSection = screen.getByText('处理预览').closest('section')
+    const confirmSection = screen.getAllByText('确认创建').at(-1)?.closest('section')
+    const summarySection = screen.getByText('任务摘要').closest('section')
+    const reviewLayout = previewSection?.parentElement
+    const bottomRow = confirmSection?.parentElement
+
     expect(screen.getAllByRole('button', { name: '创建任务' })).toHaveLength(1)
     expect(screen.getByText('处理预览')).toBeInTheDocument()
+    expect(reviewLayout).not.toBeNull()
+    expect(reviewLayout?.className).toContain('space-y-6')
+    expect(bottomRow).not.toBeNull()
+    expect(bottomRow?.className).toContain('lg:grid-cols')
+    expect(bottomRow?.contains(summarySection as Node)).toBe(true)
+    expect(screen.queryByText('如需再次确认素材信息，可以回到第一步点击“检测”。')).not.toBeInTheDocument()
   })
 })

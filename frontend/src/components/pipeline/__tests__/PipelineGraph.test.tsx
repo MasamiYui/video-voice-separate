@@ -96,6 +96,7 @@ describe('PipelineGraph', () => {
     expect(graphRoot?.querySelector('[data-ui-anchor="start"]')).not.toBeNull()
     expect(graphRoot?.querySelector('[data-ui-anchor="end"]')).not.toBeNull()
     expect(screen.getByText('音频分离').closest('button')?.getAttribute('data-ui-elevation')).toBe('flat')
+    expect(screen.getByText('音频分离').closest('button')?.querySelector('[data-ui-node-icon="corner"]')).not.toBeNull()
     expect(screen.getByText('音频分离').closest('button')?.querySelector('.absolute.inset-y-3.left-0')).toBeNull()
     expect(screen.getAllByText('视频交付')[0].closest('button')?.getAttribute('data-ui-card-size')).toBe('matched')
     expect(screen.queryByText('拆分人声与背景轨。')).not.toBeInTheDocument()
@@ -120,6 +121,22 @@ describe('PipelineGraph', () => {
     expect(screen.getAllByText('语音转写')[0].closest('button')?.getAttribute('data-ui-elevation')).toBe('flat')
     expect(screen.getAllByText('视频交付')[0].closest('button')?.getAttribute('data-ui-card-size')).toBe('matched')
     expect(screen.queryByText('最终交付包')).not.toBeInTheDocument()
+  })
+
+  it('renders runtime graphs with the unified dag layout in full mode', () => {
+    render(
+      <I18nProvider>
+        <PipelineGraph graph={graph} activeStage="task-a" showLegend />
+      </I18nProvider>,
+    )
+
+    const graphRoot = document.querySelector('[data-ui-layout="unified-dag"]')
+
+    expect(graphRoot).not.toBeNull()
+    expect(screen.getByText('状态图例')).toBeInTheDocument()
+    expect(screen.getByText('正在对齐语音片段')).toBeInTheDocument()
+    expect(screen.getAllByText(/运行中/).length).toBeGreaterThan(0)
+    expect(graphRoot?.querySelector('[data-ui-focus-rail]')).not.toBeNull()
   })
 
   it('reveals node details in the focus rail when hovering a compact node', () => {

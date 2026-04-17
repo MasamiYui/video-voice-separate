@@ -110,6 +110,16 @@ export function buildTemplatePreviewGraph(templateId: TemplateId): WorkflowGraph
   }
 }
 
+export function normalizeWorkflowGraph(graph: WorkflowGraph): WorkflowGraph {
+  const nodes = graph.nodes.filter(node => node.id in WORKFLOW_NODE_DEFINITIONS)
+
+  return {
+    workflow: graph.workflow,
+    nodes,
+    edges: buildEdges(nodes),
+  }
+}
+
 export function buildGraphFromStages(stages: TaskStage[], templateId: TemplateId = 'asr-dub-basic'): WorkflowGraph {
   const nodes = stages
     .filter(stage => stage.stage_name in WORKFLOW_NODE_DEFINITIONS)
