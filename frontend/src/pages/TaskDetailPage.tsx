@@ -483,19 +483,14 @@ export function TaskDetailPage() {
           <div className="mb-5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-widest text-slate-400">
             <Wand2 size={12} />
             导出区
+            <ReadinessPill status={task.export_readiness.status} />
           </div>
 
           {/* 主行动区：导出状态 + 成品下载并列 */}
           <div className="grid gap-0 lg:grid-cols-[1fr_1fr]">
             {/* 左：导出状态 + 操作 */}
             <div className="border-b border-slate-100 pb-5 lg:border-b-0 lg:border-r lg:pb-0 lg:pr-8">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <div className="text-sm font-semibold text-slate-900">导出状态</div>
-                  <div className="mt-1 text-sm leading-6 text-slate-500">{readinessMessage}</div>
-                </div>
-                <ReadinessPill status={task.export_readiness.status} />
-              </div>
+              <div className="text-sm leading-6 text-slate-500">{readinessMessage}</div>
 
               <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-500">
                 <span>推荐版本：<span className="font-medium text-slate-700">{getExportProfileLabel(task.export_readiness.recommended_profile, locale)}</span></span>
@@ -571,10 +566,10 @@ export function TaskDetailPage() {
             </div>
           </div>
 
-          {/* 成品素材清单 */}
-          <div className="mt-6 border-t border-slate-100 pt-6">
+          {/* 成品素材清单：紧凑 checklist */}
+          <div className="mt-6 border-t border-slate-100 pt-5">
             {(() => {
-              const assetRows: Array<{ icon: LucideIcon; title: string; description: string; entry: TaskAssetEntry }> = [
+              const assetItems: Array<{ icon: LucideIcon; title: string; description: string; entry: TaskAssetEntry }> = [
                 { icon: Film, title: '原始视频', description: '所有任务的基础输入素材', entry: task.asset_summary.video.original },
                 { icon: Eraser, title: '干净画面', description: '英文字幕版会优先使用', entry: task.asset_summary.video.clean },
                 { icon: Mic, title: '正式配音音轨', description: '用于正式成片导出', entry: task.asset_summary.audio.dub },
@@ -582,24 +577,24 @@ export function TaskDetailPage() {
                 { icon: ScanText, title: 'OCR 英文字幕', description: '适合画面原有中文字幕翻译', entry: task.asset_summary.subtitles.ocr_translated },
                 { icon: Captions, title: 'ASR 英文字幕', description: '适合语音转字幕链路', entry: task.asset_summary.subtitles.asr_translated },
               ]
-              const readyCount = assetRows.filter(r => r.entry.status === 'available').length
+              const readyCount = assetItems.filter(r => r.entry.status === 'available').length
               return (
                 <div>
                   <div className="mb-3 flex items-center gap-2">
                     <span className="text-xs font-semibold text-slate-500">成品素材清单</span>
                     <span className="text-xs text-slate-400">
                       <span className="font-semibold text-emerald-600">{readyCount}</span>
-                      <span> / {assetRows.length} 就绪</span>
+                      <span> / {assetItems.length} 就绪</span>
                     </span>
                   </div>
-                  <div className="grid grid-cols-1 gap-x-8 gap-y-0 sm:grid-cols-2">
-                    {assetRows.map(row => (
-                      <AssetStatusRow
-                        key={row.title}
-                        icon={row.icon}
-                        title={row.title}
-                        description={row.description}
-                        entry={row.entry}
+                  <div className="grid grid-cols-2 gap-x-8 gap-y-0 lg:grid-cols-3">
+                    {assetItems.map(item => (
+                      <AssetCheckRow
+                        key={item.title}
+                        icon={item.icon}
+                        title={item.title}
+                        description={item.description}
+                        entry={item.entry}
                       />
                     ))}
                   </div>
@@ -1054,6 +1049,39 @@ function AssetStatusPill({ status }: { status: TaskAssetEntry['status'] }) {
     <span className={`inline-flex whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-medium ${cls}`}>
       {label}
     </span>
+  )
+}
+
+function AssetCheckRow({
+  icon: Icon,
+  title,
+  description,
+  entry,
+}: {
+  icon: LucideIcon
+  title: string
+  description: string
+  entry: TaskAssetEntry
+}) {
+  const isAvailable = entry.status === 'available'
+  const isFailed = entry.status === 'failed'
+  const isBuilding = entry.status === 'building'
+  return (
+    <div
+      className="flex items-center gap-2.5 py-2"
+      title={entry.path ? `${description}\n${entry.path}` : description}
+    >
+      <Icon
+        size={13}
+        className={isAvailable ? 'text-emerald-500' : isFailed ? 'text-rose-400' : isBuilding ? 'text-blue-400' : 'text-slate-300'}
+      />
+      <span className={`text-sm ${isAvailable ? 'text-slate-700' : 'text-slate-400'}`}>{title}</span>
+      {!isAvailable && (
+        <span className={`text-xs ${isFailed ? 'text-rose-500' : isBuilding ? 'text-blue-500' : 'text-slate-400'}`}>
+          {isFailed ? '失败' : isBuilding ? '生成中' : '缺失'}
+        </span>
+      )}
+    </div>
   )
 }
 
