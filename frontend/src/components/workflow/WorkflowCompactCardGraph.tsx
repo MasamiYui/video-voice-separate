@@ -254,11 +254,17 @@ function CompactNodeChrome({
           )}
         </div>
 
-        <div className="mt-4 min-w-0">
+        <div
+          data-ui-title-frame=""
+          className={cn(
+            'min-w-0 flex-1 flex items-center justify-center',
+            showProgress ? 'py-3.5' : 'py-4',
+          )}
+        >
           <div
             data-ui-title-scale="xl"
             className={cn(
-              'whitespace-nowrap font-semibold leading-[1.12] tracking-[-0.04em] text-current',
+              'whitespace-nowrap text-center font-semibold leading-[1.12] tracking-[-0.04em] text-current',
               previewOnly ? 'text-[18.5px]' : 'text-[19px]',
             )}
           >

@@ -105,6 +105,8 @@ describe('PipelineGraph', () => {
     expect(screen.queryByText('拆分人声与背景轨。')).not.toBeInTheDocument()
     expect(screen.getByText('悬停节点可查看说明，点击节点可锁定。')).toBeInTheDocument()
     expect(screen.queryByText('最终交付包')).not.toBeInTheDocument()
+    expect(screen.getByText('音频分离').closest('button')?.querySelector('[data-ui-title-scale="xl"]')).toHaveClass('text-center')
+    expect(screen.getByText('音频分离').closest('button')?.querySelector('[data-ui-title-frame]')).toHaveClass('items-center', 'justify-center')
   })
 
   it('shows lane headers and stage detail text in compact preview mode', () => {
@@ -134,6 +136,8 @@ describe('PipelineGraph', () => {
     expect(screen.getAllByText('视频交付')[0].closest('button')?.getAttribute('data-ui-card-size')).toBe('matched')
     expect(screen.queryByText('最终交付包')).not.toBeInTheDocument()
     expect(screen.queryByText('生成时间对齐转写。')).not.toBeInTheDocument()
+    expect(runningNode?.querySelector('[data-ui-title-scale="xl"]')).toHaveClass('text-center')
+    expect(runningNode?.querySelector('[data-ui-title-frame]')).toHaveClass('items-center', 'justify-center')
   })
 
   it('renders runtime graphs with the unified dag layout in full mode', () => {
