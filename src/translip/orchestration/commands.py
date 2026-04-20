@@ -212,6 +212,8 @@ def build_task_c_command(request: PipelineRequest) -> list[str]:
         request.target_lang,
         "--backend",
         request.translation_backend,
+        "--batch-size",
+        str(request.translation_batch_size),
         "--device",
         request.device,
         "--condense-mode",

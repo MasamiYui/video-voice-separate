@@ -78,6 +78,18 @@ def test_build_pipeline_request_defaults_to_moss_tts_nano_onnx() -> None:
     assert request.tts_backend == "moss-tts-nano-onnx"
 
 
+def test_build_pipeline_request_keeps_translation_batch_size() -> None:
+    request = build_pipeline_request(
+        {
+            "input": "sample.mp4",
+            "output_root": "out",
+            "translation_batch_size": 2,
+        }
+    )
+
+    assert request.translation_batch_size == 2
+
+
 def test_stage_sequence_respects_from_and_to() -> None:
     stages = resolve_stage_sequence("task-b", "task-d")
     assert stages == ["task-b", "task-c", "task-d"]
@@ -389,3 +401,58 @@ def test_translate_ocr_events_writes_json_and_srt(tmp_path: Path) -> None:
     assert result.srt_path.exists()
     payload = json.loads(result.json_path.read_text(encoding="utf-8"))
     assert payload["events"][0]["translated_text"] == "en:你好"
+
+
+def test_translate_ocr_events_uses_batches_and_reports_progress(tmp_path: Path) -> None:
+    from translip.subtitles.runner import translate_ocr_events
+
+    class FakeBackend:
+        backend_name = "fake"
+        resolved_model = "fake-model"
+        resolved_device = "cpu"
+
+        def __init__(self) -> None:
+            self.batch_sizes: list[int] = []
+
+        def translate_batch(self, *, items, source_lang: str, target_lang: str):
+            self.batch_sizes.append(len(items))
+            return [
+                BackendSegmentOutput(segment_id=item.segment_id, target_text=f"{target_lang}:{item.source_text}")
+                for item in items
+            ]
+
+    events = [
+        {
+            "event_id": f"evt-{index}",
+            "start": float(index),
+            "end": float(index) + 1.0,
+            "text": f"字幕{index}",
+            "language": "zh",
+        }
+        for index in range(5)
+    ]
+    events_path = tmp_path / "ocr_events.json"
+    events_path.write_text(json.dumps({"events": events}), encoding="utf-8")
+    backend = FakeBackend()
+    progress: list[tuple[int, int]] = []
+
+    result = translate_ocr_events(
+        events_path=events_path,
+        output_dir=tmp_path / "ocr-translate",
+        target_lang="en",
+        backend_name="local-m2m100",
+        backend_override=backend,
+        batch_size=2,
+        progress_callback=lambda completed, total: progress.append((completed, total)),
+    )
+
+    assert backend.batch_sizes == [2, 2, 1]
+    assert progress == [(2, 5), (4, 5), (5, 5)]
+    payload = json.loads(result.json_path.read_text(encoding="utf-8"))
+    assert [event["translated_text"] for event in payload["events"]] == [
+        "en:字幕0",
+        "en:字幕1",
+        "en:字幕2",
+        "en:字幕3",
+        "en:字幕4",
+    ]

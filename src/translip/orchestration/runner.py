@@ -465,6 +465,17 @@ def execute_node(
         from ..subtitles.runner import translate_ocr_events
 
         monitor.update_stage_progress(node_name, 5.0, "translating OCR subtitles")
+
+        def _on_ocr_translation_progress(completed: int, total: int) -> None:
+            if total <= 0:
+                return
+            percent = 5.0 + (90.0 * completed / total)
+            monitor.update_stage_progress(
+                node_name,
+                percent,
+                f"translating OCR subtitles ({completed}/{total})",
+            )
+
         result = translate_ocr_events(
             events_path=ocr_events_path(request),
             output_dir=request.output_root / "ocr-translate",
@@ -473,6 +484,8 @@ def execute_node(
             device=request.device,
             api_model=request.api_model,
             api_base_url=request.api_base_url,
+            batch_size=request.translation_batch_size,
+            progress_callback=_on_ocr_translation_progress,
         )
         return {
             "manifest_path": str(result.manifest_path),

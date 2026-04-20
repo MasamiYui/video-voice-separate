@@ -478,6 +478,7 @@ class PipelineRequest:
     erase_project_root: Path | str | None = None
     target_lang: str = "en"
     translation_backend: TranslationBackendName = "local-m2m100"
+    translation_batch_size: int = 4
     tts_backend: TtsBackendName = "moss-tts-nano-onnx"
     device: Device = "auto"
     run_from_stage: PipelineStageName = "stage1"
@@ -553,6 +554,7 @@ class PipelineRequest:
             ),
             target_lang=self.target_lang,
             translation_backend=self.translation_backend,
+            translation_batch_size=int(self.translation_batch_size),
             tts_backend=self.tts_backend,
             device=self.device,
             run_from_stage=self.run_from_stage,
