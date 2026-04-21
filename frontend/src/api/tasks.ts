@@ -1,5 +1,12 @@
 import api from './client'
-import type { CreateTaskRequest, Task, TaskListResponse, WorkflowGraph } from '../types'
+import type {
+  CreateTaskRequest,
+  DubbingReviewDecisionPayload,
+  DubbingReviewResponse,
+  Task,
+  TaskListResponse,
+  WorkflowGraph,
+} from '../types'
 
 export type SubtitlePreviewPayload = {
   input_video_path: string
@@ -77,6 +84,12 @@ export const tasksApi = {
 
   getDelivery: (id: string) =>
     api.get(`/api/tasks/${id}/delivery`).then(r => r.data),
+
+  getDubbingReview: (id: string) =>
+    api.get<DubbingReviewResponse>(`/api/tasks/${id}/dubbing-review`).then(r => r.data),
+
+  saveDubbingReviewDecision: (id: string, payload: DubbingReviewDecisionPayload) =>
+    api.post(`/api/tasks/${id}/dubbing-review/decisions`, payload).then(r => r.data),
 
   createSubtitlePreview: (id: string, payload: SubtitlePreviewPayload) =>
     api.post(`/api/tasks/${id}/subtitle-preview`, payload).then(r => r.data),

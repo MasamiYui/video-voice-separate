@@ -243,6 +243,152 @@ export interface Artifact {
   suffix: string
 }
 
+export interface DubbingReviewDecision {
+  category: 'reference' | 'merge' | 'repair'
+  item_id: string
+  decision: string
+  speaker_id?: string | null
+  reference_path?: string | null
+  attempt_id?: string | null
+  payload?: Record<string, unknown>
+  updated_at?: string
+}
+
+export interface DubbingReviewReferenceCandidate {
+  reference_id: string
+  source: string
+  path: string
+  artifact_path: string | null
+  duration_sec: number | null
+  text: string
+  rms: number | null
+  quality_score: number | null
+  selection_reason?: string | null
+  risk_flags: string[]
+  is_current: boolean
+  is_recommended: boolean
+}
+
+export interface DubbingReviewSpeaker {
+  speaker_id: string
+  profile_id: string
+  display_name: string
+  source_label?: string | null
+  status: string
+  total_speech_sec: number | null
+  segment_count: number
+  reference_clip_count: number
+  speaker_failed_count: number
+  repair_item_count: number
+  current_reference_path?: string | null
+  recommended_reference_path?: string | null
+  bank_status?: string | null
+  recommended_reference_id?: string | null
+  decision?: DubbingReviewDecision | null
+  candidates: DubbingReviewReferenceCandidate[]
+}
+
+export interface DubbingReviewMergeChild {
+  segment_id: string
+  speaker_id?: string | null
+  source_text?: string | null
+  target_text?: string | null
+  start?: number | null
+  end?: number | null
+}
+
+export interface DubbingReviewMergeCandidate {
+  group_id: string
+  group_type: string
+  status: string
+  source: string
+  source_segment_ids: string[]
+  speaker_id?: string | null
+  anchor_start_sec: number | null
+  anchor_end_sec: number | null
+  source_text?: string | null
+  target_text?: string | null
+  audio_path?: string | null
+  audio_artifact_path?: string | null
+  metrics: Record<string, unknown>
+  decision?: DubbingReviewDecision | null
+  children: DubbingReviewMergeChild[]
+}
+
+export interface DubbingReviewAttempt {
+  attempt_id: string
+  status?: string
+  target_text?: string
+  text_variant?: string | null
+  backend?: string
+  reference_path?: string
+  audio_path?: string
+  audio_artifact_path?: string | null
+  generated_duration_sec?: number
+  metrics?: Record<string, unknown>
+  score?: number
+  strict_accepted?: boolean
+  error?: string | null
+}
+
+export interface DubbingReviewRepairItem {
+  segment_id: string
+  speaker_id?: string | null
+  source_text?: string | null
+  target_text?: string | null
+  anchor_start: number | null
+  anchor_end: number | null
+  source_duration_sec: number | null
+  generated_duration_sec: number | null
+  audio_path?: string | null
+  audio_artifact_path?: string | null
+  reference_path?: string | null
+  queue_class?: string | null
+  strict_blocker: boolean
+  priority?: string | null
+  priority_score: number | null
+  failure_reasons: string[]
+  suggested_actions: string[]
+  metrics: Record<string, unknown>
+  rewrite_candidates: Array<Record<string, unknown>>
+  attempts: DubbingReviewAttempt[]
+  decision?: DubbingReviewDecision | null
+}
+
+export interface DubbingReviewResponse {
+  task_id: string
+  target_lang: string
+  status: 'available' | 'missing'
+  summary: {
+    speaker_count: number
+    merge_candidate_count: number
+    repair_item_count: number
+    reference_decision_count: number
+    merge_decision_count: number
+    repair_decision_count: number
+  }
+  stats: Record<string, unknown>
+  artifact_paths: Record<string, string>
+  speakers: DubbingReviewSpeaker[]
+  merge_candidates: DubbingReviewMergeCandidate[]
+  repair_items: DubbingReviewRepairItem[]
+  decisions: {
+    reference: DubbingReviewDecision[]
+    merge: DubbingReviewDecision[]
+    repair: DubbingReviewDecision[]
+  }
+}
+
+export interface DubbingReviewDecisionPayload {
+  category: 'reference' | 'merge' | 'repair'
+  item_id: string
+  decision: string
+  speaker_id?: string | null
+  reference_path?: string | null
+  attempt_id?: string | null
+  payload?: Record<string, unknown>
+}
+
 export interface ProgressEvent {
   type: 'progress' | 'done' | 'error' | 'timeout'
   stage?: string

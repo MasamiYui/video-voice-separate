@@ -9,6 +9,7 @@ import {
   Eraser,
   Film,
   Headphones,
+  ListChecks,
   Loader2,
   Mic,
   PlayCircle,
@@ -24,6 +25,7 @@ import {
 import { tasksApi } from '../api/tasks'
 import { subscribeToProgress } from '../api/progress'
 import { PageContainer } from '../components/layout/PageContainer'
+import { DubbingReviewDrawer } from '../components/dubbing-review/DubbingReviewDrawer'
 import { PipelineGraph } from '../components/pipeline/PipelineGraph'
 import { ProgressBar } from '../components/shared/ProgressBar'
 import { StatusBadge } from '../components/shared/StatusBadge'
@@ -115,6 +117,7 @@ export function TaskDetailPage() {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null | undefined>(undefined)
   const [rerunStage, setRerunStage] = useState<string | undefined>(undefined)
   const [isExportDrawerOpen, setExportDrawerOpen] = useState(false)
+  const [isDubbingReviewOpen, setDubbingReviewOpen] = useState(false)
   const [showProfileOverrides, setShowProfileOverrides] = useState(false)
   const [exportProfile, setExportProfile] = useState<TaskExportProfile>('dub_no_subtitles')
   const [subtitleSource, setSubtitleSource] = useState<'ocr' | 'asr'>('ocr')
@@ -549,15 +552,25 @@ export function TaskDetailPage() {
               )}
 
               <div className="mt-5">
-                <button
-                  type="button"
-                  onClick={() => setExportDrawerOpen(true)}
-                  disabled={!canOpenExportDrawer}
-                  className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <Wand2 size={14} />
-                  导出成品
-                </button>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setExportDrawerOpen(true)}
+                    disabled={!canOpenExportDrawer}
+                    className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Wand2 size={14} />
+                    导出成品
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDubbingReviewOpen(true)}
+                    className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+                  >
+                    <ListChecks size={14} />
+                    配音返修审查
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -679,6 +692,12 @@ export function TaskDetailPage() {
         artifacts={selectedArtifacts}
         taskId={task.id}
         onClose={() => setSelectedNodeId(null)}
+      />
+
+      <DubbingReviewDrawer
+        taskId={task.id}
+        isOpen={isDubbingReviewOpen}
+        onClose={() => setDubbingReviewOpen(false)}
       />
 
       {isExportDrawerOpen && (
