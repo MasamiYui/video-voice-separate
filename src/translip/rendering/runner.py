@@ -51,6 +51,9 @@ class TimelineItem:
     generated_duration_sec: float
     audio_path: Path
     task_d_status: str
+    duration_status: str
+    speaker_status: str
+    intelligibility_status: str
     speaker_similarity: float | None
     text_similarity: float | None
     overall_status: str
@@ -80,6 +83,9 @@ class TimelineItem:
             "placement_start": round(self.placement_start, 3) if self.placement_start is not None else None,
             "placement_end": round(self.placement_end, 3) if self.placement_end is not None else None,
             "task_d_status": self.task_d_status,
+            "duration_status": self.duration_status,
+            "speaker_status": self.speaker_status,
+            "intelligibility_status": self.intelligibility_status,
             "speaker_similarity": round(self.speaker_similarity, 4) if self.speaker_similarity is not None else None,
             "text_similarity": round(self.text_similarity, 4) if self.text_similarity is not None else None,
             "overall_status": self.overall_status,
@@ -304,7 +310,10 @@ def _load_candidates(
                         source_duration_sec=float(row.get("source_duration_sec") or 0.0),
                         generated_duration_sec=float(row.get("generated_duration_sec") or 0.0),
                         audio_path=Path(str(row.get("audio_path") or report_path)),
-                        task_d_status=str(row.get("speaker_status") or "unknown"),
+                        task_d_status=str(row.get("overall_status") or "failed"),
+                        duration_status=str(row.get("duration_status") or "unknown"),
+                        speaker_status=str(row.get("speaker_status") or "unknown"),
+                        intelligibility_status=str(row.get("intelligibility_status") or "unknown"),
                         speaker_similarity=_float_or_none(row.get("speaker_similarity")),
                         text_similarity=_float_or_none(row.get("text_similarity")),
                         overall_status=str(row.get("overall_status") or "failed"),
@@ -326,7 +335,12 @@ def _load_candidates(
                 source_duration_sec=float(anchor.get("duration") or row_for_mix.get("source_duration_sec") or row.get("source_duration_sec") or 0.0),
                 generated_duration_sec=float(row_for_mix.get("generated_duration_sec") or row.get("generated_duration_sec") or 0.0),
                 audio_path=Path(str(row_for_mix.get("audio_path") or row.get("audio_path"))).expanduser().resolve(),
-                task_d_status=str(row_for_mix.get("speaker_status") or row.get("speaker_status") or "unknown"),
+                task_d_status=str(row_for_mix.get("overall_status") or row.get("overall_status") or "failed"),
+                duration_status=str(row_for_mix.get("duration_status") or row.get("duration_status") or "unknown"),
+                speaker_status=str(row_for_mix.get("speaker_status") or row.get("speaker_status") or "unknown"),
+                intelligibility_status=str(
+                    row_for_mix.get("intelligibility_status") or row.get("intelligibility_status") or "unknown"
+                ),
                 speaker_similarity=_float_or_none(row_for_mix.get("speaker_similarity")),
                 text_similarity=_float_or_none(row_for_mix.get("text_similarity")),
                 overall_status=str(row_for_mix.get("overall_status") or row.get("overall_status") or "failed"),

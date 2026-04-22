@@ -111,6 +111,20 @@ def test_rewrite_for_dubbing_compresses_short_dialogue_phrase() -> None:
     assert by_variant["natural"].estimated_tts_duration_sec < 1.0
 
 
+def test_rewrite_for_dubbing_preserves_mid_sentence_contraction_case() -> None:
+    candidates = rewrite_for_dubbing(
+        segment_id="seg-0023",
+        source_text="你成通缉犯了什么逻辑",
+        current_target_text="What is the logic you are searching for?",
+        source_duration_sec=1.56,
+        target_lang="en",
+        glossary=[],
+    )
+
+    by_variant = {candidate.variant: candidate for candidate in candidates}
+    assert by_variant["short"].target_text == "What is the logic you're searching for?"
+
+
 def test_plan_dub_repair_writes_queue_rewrite_and_reference_plan(tmp_path: Path) -> None:
     translation_path = tmp_path / "translation.en.json"
     profiles_path = tmp_path / "speaker_profiles.json"

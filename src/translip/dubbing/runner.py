@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import shutil
 import time
 from pathlib import Path
 from typing import Any
@@ -9,7 +10,7 @@ from typing import Any
 from ..exceptions import TranslipError
 from ..types import DubbingArtifacts, DubbingRequest, DubbingResult
 from ..utils.files import ensure_directory, remove_tree, work_directory
-from .backend import ReferencePackage, SynthSegmentInput
+from .backend import ReferencePackage, SynthSegmentInput, SynthSegmentOutput
 from .export import build_dubbing_manifest, build_dubbing_report, now_iso, render_demo_audio, write_json
 from .metrics import evaluate_segment
 from .moss_tts_nano_backend import MossTtsNanoOnnxBackend
@@ -74,44 +75,15 @@ def synthesize_speaker(
                 metadata={"context_unit_id": segment_row.get("context_unit_id")},
             )
             output_path = bundle_dir / "segments" / f"{segment.segment_id}.wav"
-            synthesis_error: Exception | None = None
-            selected_reference: ReferencePackage | None = None
-            synth_output = None
-
-            for candidate in reference_candidates[:2]:
-                prepared = prepared_references.get(candidate.path)
-                if prepared is None:
-                    prepared = prepare_reference_package(
-                        candidate,
-                        output_path=work_dir / "reference" / f"{candidate.path.stem}_prepared.wav",
-                    )
-                    prepared_references[candidate.path] = prepared
-                try:
-                    synth_output = backend.synthesize(reference=prepared, segment=segment, output_path=output_path)
-                    selected_reference = prepared
-                    break
-                except Exception as exc:  # pragma: no cover - covered by real pipeline run
-                    synthesis_error = exc
-                    logger.warning(
-                        "Task D synthesis failed for %s with reference %s: %s",
-                        segment.segment_id,
-                        candidate.path,
-                        exc,
-                    )
-
-            if synth_output is None or selected_reference is None:
-                raise TranslipError(
-                    f"Failed to synthesize segment {segment.segment_id}: {synthesis_error}"
-                )
-
-            evaluation = evaluate_segment(
-                reference_audio_path=selected_reference.original_audio_path,
-                generated_audio_path=synth_output.audio_path,
-                target_text=segment.target_text,
+            synth_output, selected_reference, evaluation, attempt_summary = _synthesize_with_quality_retry(
+                backend=backend,
+                segment=segment,
+                output_path=output_path,
+                reference_candidates=reference_candidates[:2],
+                prepared_references=prepared_references,
+                work_dir=work_dir,
+                request=normalized_request,
                 target_lang=target_lang,
-                source_duration_sec=segment.source_duration_sec,
-                requested_device=normalized_request.device,
-                backread_model_name=normalized_request.backread_model,
             )
             succeeded_audio_paths.append(synth_output.audio_path)
             report_segments.append(
@@ -136,6 +108,10 @@ def synthesize_speaker(
                     "qa_flags": segment.qa_flags,
                     "reference_path": str(selected_reference.original_audio_path),
                     "audio_path": str(synth_output.audio_path),
+                    "attempt_count": attempt_summary["attempt_count"],
+                    "selected_attempt_index": attempt_summary["selected_attempt_index"],
+                    "quality_retry_reasons": attempt_summary["quality_retry_reasons"],
+                    "attempts": attempt_summary["attempts"],
                     "index": index,
                 }
             )
@@ -263,6 +239,159 @@ def _filtered_segments(
     if not rows:
         raise TranslipError(f"No translation segments found for speaker {request.speaker_id}")
     return rows
+
+
+def _synthesize_with_quality_retry(
+    *,
+    backend: object,
+    segment: SynthSegmentInput,
+    output_path: Path,
+    reference_candidates: list[object],
+    prepared_references: dict[Path, ReferencePackage],
+    work_dir: Path,
+    request: DubbingRequest,
+    target_lang: str,
+) -> tuple[SynthSegmentOutput, ReferencePackage, object, dict[str, Any]]:
+    attempts: list[dict[str, Any]] = []
+    retry_reasons: list[str] = []
+    synthesis_error: Exception | None = None
+
+    for candidate_index, candidate in enumerate(reference_candidates, start=1):
+        prepared = prepared_references.get(candidate.path)
+        if prepared is None:
+            prepared = prepare_reference_package(
+                candidate,
+                output_path=work_dir / "reference" / f"{candidate.path.stem}_prepared.wav",
+            )
+            prepared_references[candidate.path] = prepared
+        attempt_path = work_dir / "attempts" / segment.segment_id / f"ref-{candidate_index:02d}.wav"
+        try:
+            synth_output = backend.synthesize(reference=prepared, segment=segment, output_path=attempt_path)
+            evaluation = evaluate_segment(
+                reference_audio_path=prepared.original_audio_path,
+                generated_audio_path=synth_output.audio_path,
+                target_text=segment.target_text,
+                target_lang=target_lang,
+                source_duration_sec=segment.source_duration_sec,
+                requested_device=request.device,
+                backread_model_name=request.backread_model,
+            )
+        except Exception as exc:  # pragma: no cover - covered by real pipeline run
+            synthesis_error = exc
+            logger.warning(
+                "Task D synthesis failed for %s with reference %s: %s",
+                segment.segment_id,
+                candidate.path,
+                exc,
+            )
+            attempts.append(
+                {
+                    "attempt_index": candidate_index,
+                    "reference_path": str(candidate.path),
+                    "status": "failed",
+                    "error": str(exc),
+                }
+            )
+            continue
+
+        attempt = {
+            "attempt_index": candidate_index,
+            "reference_path": str(prepared.original_audio_path),
+            "status": "candidate",
+            "audio_path": str(synth_output.audio_path),
+            "sample_rate": synth_output.sample_rate,
+            "generated_duration_sec": round(float(synth_output.generated_duration_sec), 3),
+            "duration_ratio": round(float(evaluation.duration_ratio), 3),
+            "duration_status": evaluation.duration_status,
+            "speaker_similarity": (
+                round(float(evaluation.speaker_similarity), 4)
+                if evaluation.speaker_similarity is not None
+                else None
+            ),
+            "speaker_status": evaluation.speaker_status,
+            "text_similarity": round(float(evaluation.text_similarity), 4),
+            "intelligibility_status": evaluation.intelligibility_status,
+            "overall_status": evaluation.overall_status,
+            "_prepared": prepared,
+            "_synth_output": synth_output,
+            "_evaluation": evaluation,
+        }
+        attempts.append(attempt)
+        if candidate_index == 1:
+            retry_reasons = _quality_retry_reasons(evaluation)
+            if not retry_reasons:
+                break
+
+    successful_attempts = [attempt for attempt in attempts if attempt.get("status") == "candidate"]
+    if not successful_attempts:
+        raise TranslipError(f"Failed to synthesize segment {segment.segment_id}: {synthesis_error}")
+
+    selected = max(successful_attempts, key=lambda attempt: _attempt_score(attempt["_evaluation"]))
+    selected["status"] = "selected"
+    selected_output = selected["_synth_output"]
+    selected_reference = selected["_prepared"]
+    selected_evaluation = selected["_evaluation"]
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(selected_output.audio_path, output_path)
+
+    report_attempts: list[dict[str, Any]] = []
+    for attempt in attempts:
+        public = {key: value for key, value in attempt.items() if not key.startswith("_")}
+        public["selected"] = attempt is selected
+        if attempt is selected:
+            public["audio_path"] = str(output_path)
+        else:
+            public.pop("audio_path", None)
+        report_attempts.append(public)
+
+    final_output = SynthSegmentOutput(
+        segment_id=selected_output.segment_id,
+        audio_path=output_path,
+        sample_rate=int(selected_output.sample_rate),
+        generated_duration_sec=float(selected_output.generated_duration_sec),
+        backend_metadata=dict(getattr(selected_output, "backend_metadata", {}) or {}),
+    )
+    return (
+        final_output,
+        selected_reference,
+        selected_evaluation,
+        {
+            "attempt_count": len(attempts),
+            "selected_attempt_index": int(selected["attempt_index"]),
+            "quality_retry_reasons": retry_reasons,
+            "attempts": report_attempts,
+        },
+    )
+
+
+def _quality_retry_reasons(evaluation: object) -> list[str]:
+    reasons: list[str] = []
+    duration_ratio = float(getattr(evaluation, "duration_ratio", 0.0) or 0.0)
+    text_similarity = float(getattr(evaluation, "text_similarity", 0.0) or 0.0)
+    if getattr(evaluation, "duration_status", "") == "failed" and (
+        duration_ratio >= 2.0 or 0.0 < duration_ratio <= 0.45
+    ):
+        reasons.append("pathological_duration")
+    if getattr(evaluation, "intelligibility_status", "") == "failed" and text_similarity < 0.6:
+        reasons.append("poor_backread")
+    return reasons
+
+
+def _attempt_score(evaluation: object) -> float:
+    overall = _status_score(str(getattr(evaluation, "overall_status", ""))) * 100.0
+    duration = _status_score(str(getattr(evaluation, "duration_status", ""))) * 24.0
+    intelligibility = _status_score(str(getattr(evaluation, "intelligibility_status", ""))) * 18.0
+    speaker = _status_score(str(getattr(evaluation, "speaker_status", ""))) * 10.0
+    duration_ratio = float(getattr(evaluation, "duration_ratio", 0.0) or 0.0)
+    duration_proximity = max(0.0, 1.0 - abs(1.0 - duration_ratio))
+    text = float(getattr(evaluation, "text_similarity", 0.0) or 0.0)
+    speaker_similarity = getattr(evaluation, "speaker_similarity", None)
+    speaker_score = float(speaker_similarity) if speaker_similarity is not None else 0.0
+    return overall + duration + intelligibility + speaker + duration_proximity + text + speaker_score
+
+
+def _status_score(status: str) -> float:
+    return {"passed": 2.0, "review": 1.0, "failed": 0.0}.get(status, 0.0)
 
 
 def _build_backend(request: DubbingRequest) -> object:

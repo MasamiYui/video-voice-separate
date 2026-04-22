@@ -420,3 +420,104 @@ def test_synthesize_speaker_writes_report_and_manifest(tmp_path: Path, monkeypat
     assert report["segments"][1]["overall_status"] == "passed"
     assert manifest["status"] == "succeeded"
     assert manifest["resolved"]["selected_segment_count"] == 2
+
+
+def test_synthesize_speaker_retries_second_reference_for_pathological_duration(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    bad_reference = tmp_path / "reference_bad.wav"
+    good_reference = tmp_path / "reference_good.wav"
+    _write_audio(bad_reference, 9.0)
+    _write_audio(good_reference, 8.5)
+    translation_path = tmp_path / "translation.en.json"
+    profiles_path = tmp_path / "speaker_profiles.json"
+    translation_path.write_text(
+        json.dumps(
+            {
+                "backend": {"target_lang": "en", "output_tag": "en"},
+                "segments": [
+                    {
+                        "segment_id": "seg-0001",
+                        "speaker_id": "spk_0000",
+                        "speaker_label": "SPEAKER_00",
+                        "start": 0.0,
+                        "duration": 0.9,
+                        "target_text": "My bag.",
+                        "duration_budget": {"estimated_target_sec": 0.8},
+                        "qa_flags": ["condensed"],
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    profiles_path.write_text(
+        json.dumps(
+            {
+                "profiles": [
+                    {
+                        "profile_id": "profile_0000",
+                        "speaker_id": "spk_0000",
+                        "reference_clips": [
+                            {
+                                "path": str(bad_reference),
+                                "text": "这是第一段声音参考文本",
+                                "duration": 9.0,
+                                "rms": 0.05,
+                            },
+                            {
+                                "path": str(good_reference),
+                                "text": "这是第二段声音参考文本",
+                                "duration": 8.5,
+                                "rms": 0.05,
+                            },
+                        ],
+                    }
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    def fake_evaluate(**kwargs):
+        is_second_reference = "ref-02" in str(kwargs["generated_audio_path"])
+        return type(
+            "Eval",
+            (),
+            {
+                "speaker_similarity": 0.5 if is_second_reference else 0.3,
+                "speaker_status": "passed" if is_second_reference else "review",
+                "backread_text": "my bag",
+                "text_similarity": 1.0,
+                "intelligibility_status": "passed",
+                "duration_ratio": 1.0 if is_second_reference else 7.0,
+                "duration_status": "passed" if is_second_reference else "failed",
+                "overall_status": "passed" if is_second_reference else "failed",
+            },
+        )()
+
+    monkeypatch.setattr("translip.dubbing.runner.evaluate_segment", fake_evaluate)
+
+    result = synthesize_speaker(
+        DubbingRequest(
+            translation_path=translation_path,
+            profiles_path=profiles_path,
+            output_dir=tmp_path / "output",
+            speaker_id="spk_0000",
+        ),
+        backend_override=FakeBackend(),
+    )
+
+    report = json.loads(result.artifacts.report_path.read_text(encoding="utf-8"))
+    segment = report["segments"][0]
+    assert segment["overall_status"] == "passed"
+    assert segment["duration_status"] == "passed"
+    assert segment["attempt_count"] == 2
+    assert segment["selected_attempt_index"] == 2
+    assert segment["quality_retry_reasons"] == ["pathological_duration"]
+    assert segment["reference_path"] == str(good_reference.resolve())
+    assert segment["attempts"][0]["selected"] is False
+    assert segment["attempts"][1]["selected"] is True

@@ -273,12 +273,12 @@ def _replace_probable_term(text: str, replacement: str) -> str:
 def _shorten_english(text: str) -> str:
     shortened = _normalize_sentence(text)
     replacements = [
-        (r"\bI am\b", "I'm"),
-        (r"\bYou are\b", "You're"),
-        (r"\bWe are\b", "We're"),
+        (r"\bI am\b", lambda match: _match_case(match.group(0), "I'm")),
+        (r"\bYou are\b", lambda match: _match_case(match.group(0), "you're")),
+        (r"\bWe are\b", lambda match: _match_case(match.group(0), "we're")),
         (r"\bgoing to\b", "headed to"),
-        (r"\bDo you know the\b", "Know the"),
-        (r"\bDo you know\b", "Know"),
+        (r"\bDo you know the\b", lambda match: _match_case(match.group(0), "know the")),
+        (r"\bDo you know\b", lambda match: _match_case(match.group(0), "know")),
         (r"\bExcuse me,\s*", ""),
         (r"\bplease\b", ""),
         (r"\bvery\b", ""),
@@ -286,6 +286,13 @@ def _shorten_english(text: str) -> str:
     for pattern, replacement in replacements:
         shortened = re.sub(pattern, replacement, shortened, flags=re.IGNORECASE)
     return _normalize_sentence(shortened)
+
+
+def _match_case(original: str, replacement: str) -> str:
+    first_word = re.search(r"[A-Za-z]", original)
+    if first_word and original[first_word.start()].isupper():
+        return replacement[:1].upper() + replacement[1:]
+    return replacement
 
 
 def _trim_to_core_words(text: str, *, max_words: int = 4) -> str:

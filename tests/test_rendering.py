@@ -145,8 +145,10 @@ def test_render_dub_writes_outputs_and_places_failed_segments_when_audio_exists(
                     "source_duration_sec": 1.0,
                     "generated_duration_sec": 0.95,
                     "speaker_similarity": 0.72,
+                    "duration_status": "passed",
                     "speaker_status": "passed",
                     "text_similarity": 0.98,
+                    "intelligibility_status": "passed",
                     "overall_status": "passed",
                     "audio_path": str(seg1_audio),
                 },
@@ -157,8 +159,10 @@ def test_render_dub_writes_outputs_and_places_failed_segments_when_audio_exists(
                     "source_duration_sec": 1.0,
                     "generated_duration_sec": 1.30,
                     "speaker_similarity": 0.68,
+                    "duration_status": "review",
                     "speaker_status": "passed",
                     "text_similarity": 0.97,
+                    "intelligibility_status": "passed",
                     "overall_status": "review",
                     "audio_path": str(seg2_audio),
                 },
@@ -178,8 +182,10 @@ def test_render_dub_writes_outputs_and_places_failed_segments_when_audio_exists(
                     "source_duration_sec": 1.0,
                     "generated_duration_sec": 1.05,
                     "speaker_similarity": 0.35,
+                    "duration_status": "review",
                     "speaker_status": "review",
                     "text_similarity": 0.90,
+                    "intelligibility_status": "passed",
                     "overall_status": "review",
                     "audio_path": str(seg3_audio),
                 },
@@ -190,8 +196,10 @@ def test_render_dub_writes_outputs_and_places_failed_segments_when_audio_exists(
                     "source_duration_sec": 1.0,
                     "generated_duration_sec": 2.50,
                     "speaker_similarity": 0.40,
+                    "duration_status": "failed",
                     "speaker_status": "review",
                     "text_similarity": 0.88,
+                    "intelligibility_status": "failed",
                     "overall_status": "failed",
                     "audio_path": str(seg4_audio),
                 },
@@ -233,9 +241,34 @@ def test_render_dub_writes_outputs_and_places_failed_segments_when_audio_exists(
     assert mix_report["stats"]["skip_reason_counts"]["skipped_overlap"] == 1
     assert "skipped_failed_task_d" not in mix_report["stats"]["skip_reason_counts"]
     assert "skipped_fit" not in mix_report["stats"]["skip_reason_counts"]
+    assert mix_report["stats"]["quality_summary"]["total_count"] == 4
+    assert mix_report["stats"]["quality_summary"]["overall_status_counts"] == {
+        "failed": 1,
+        "passed": 1,
+        "review": 2,
+    }
+    assert mix_report["stats"]["quality_summary"]["duration_status_counts"] == {
+        "failed": 1,
+        "passed": 1,
+        "review": 2,
+    }
+    assert mix_report["stats"]["quality_summary"]["speaker_status_counts"] == {
+        "passed": 2,
+        "review": 2,
+    }
+    assert mix_report["stats"]["quality_summary"]["intelligibility_status_counts"] == {
+        "failed": 1,
+        "passed": 3,
+    }
+    assert mix_report["stats"]["quality_summary"]["failure_reason_counts"] == {
+        "duration+intelligibility": 1,
+    }
 
     item_by_id = {item["segment_id"]: item for item in timeline["items"]}
     assert item_by_id["seg-0001"]["mix_status"] == "placed"
+    assert item_by_id["seg-0001"]["duration_status"] == "passed"
+    assert item_by_id["seg-0001"]["speaker_status"] == "passed"
+    assert item_by_id["seg-0001"]["intelligibility_status"] == "passed"
     assert item_by_id["seg-0002"]["fit_strategy"] == "compress"
     assert item_by_id["seg-0002"]["mix_status"] == "placed"
     assert item_by_id["seg-0003"]["mix_status"] == "skipped_overlap"

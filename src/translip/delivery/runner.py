@@ -62,7 +62,11 @@ def export_video(request: ExportVideoRequest) -> ExportVideoResult:
     task_e_manifest_path = normalized_request.task_e_dir / "task-e-manifest.json"
     task_e_manifest = _load_json(task_e_manifest_path)
     preview_audio_path = _resolve_preview_audio_path(normalized_request, task_e_manifest)
-    final_dub_audio_path = preview_audio_path
+    final_dub_audio_path = (
+        _resolve_dub_audio_path(normalized_request, task_e_manifest)
+        if normalized_request.export_dub
+        else _resolve_optional_dub_audio_path(normalized_request, task_e_manifest) or preview_audio_path
+    )
     target_lang = _resolve_target_lang(normalized_request, task_e_manifest)
     subtitle_path = _resolve_subtitle_path(normalized_request, target_lang)
     chinese_subtitle_path = _resolve_chinese_subtitle_path(normalized_request)
@@ -440,6 +444,27 @@ def _resolve_preview_audio_path(request: ExportVideoRequest, task_e_manifest: di
         resolved = (request.task_e_dir / f"preview_mix.{target_lang}.wav").resolve()
     if not resolved.exists():
         raise TranslipError(f"Task G preview mix does not exist: {resolved}")
+    return resolved
+
+
+def _resolve_dub_audio_path(request: ExportVideoRequest, task_e_manifest: dict[str, Any]) -> Path:
+    resolved = _resolve_optional_dub_audio_path(request, task_e_manifest)
+    if resolved is None:
+        target_lang = _resolve_target_lang(request, task_e_manifest)
+        fallback = (request.task_e_dir / f"dub_voice.{target_lang}.wav").resolve()
+        raise TranslipError(f"Task G dub voice does not exist: {fallback}")
+    return resolved
+
+
+def _resolve_optional_dub_audio_path(request: ExportVideoRequest, task_e_manifest: dict[str, Any]) -> Path | None:
+    path = task_e_manifest.get("artifacts", {}).get("dub_voice")
+    if path:
+        resolved = Path(str(path)).expanduser().resolve()
+    else:
+        target_lang = _resolve_target_lang(request, task_e_manifest)
+        resolved = (request.task_e_dir / f"dub_voice.{target_lang}.wav").resolve()
+    if not resolved.exists():
+        return None
     return resolved
 
 

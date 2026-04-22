@@ -8,7 +8,7 @@ from pathlib import Path
 from ..exceptions import TranslipError
 from ..types import TranslationArtifacts, TranslationRequest, TranslationResult
 from ..utils.files import ensure_directory
-from .backend import BackendSegmentInput, CondenseInput, output_tag_for_language
+from .backend import BackendSegmentInput, CondenseInput, canonical_language_code, output_tag_for_language
 from .duration import build_duration_budget, estimate_tts_duration, summarize_duration_budgets
 from .export import (
     build_editable_payload,
@@ -18,7 +18,7 @@ from .export import (
     write_json,
     write_translation_srt,
 )
-from .glossary import apply_glossary, load_glossary, normalize_target_with_glossary
+from .glossary import GlossaryEntry, apply_glossary, load_glossary, normalize_target_with_glossary
 from .qa import build_qa_flags
 from .units import ContextUnit, SegmentRecord, build_context_units
 
@@ -28,6 +28,7 @@ _CONDENSE_LEVELS = {
     "smart": {"risky"},
     "aggressive": {"risky", "review"},
 }
+_UNSAFE_RULE_BASED_CONDENSE_REASONS = {"trimmed_for_short_source_window"}
 
 
 def translate_script(
@@ -280,6 +281,7 @@ def _translate_units(
                 "target_text": target_text,
                 "original_target_text": target_text,
                 "condense_status": "skipped",
+                "condense_method": "none",
                 "context_unit_id": unit.unit_id,
                 "glossary_matches": glossary_matches,
                 "duration_budget": duration_budget,
@@ -337,14 +339,6 @@ def _apply_condensation(
     if mode not in _CONDENSE_LEVELS:
         return
 
-    if not getattr(backend, "supports_condensation", False):
-        logger.warning(
-            "Condense mode '%s' requested but backend %r does not support condensation; skipping.",
-            mode,
-            getattr(backend, "backend_name", type(backend).__name__),
-        )
-        return
-
     target_levels = _CONDENSE_LEVELS[mode]
     candidates: list[tuple[dict[str, object], CondenseInput]] = []
     for row in segment_rows:
@@ -381,55 +375,62 @@ def _apply_condensation(
     if not candidates:
         return
 
-    try:
-        outputs = backend.condense_batch(
-            items=[item for _, item in candidates],
-            target_lang=request.target_lang,
-        )
-    except Exception as exc:  # pragma: no cover - network dependent
-        logger.warning("Condense batch failed: %s; keeping original translations.", exc)
-        for row, _ in candidates:
-            row["condense_status"] = "condense_failed"
-        return
+    row_updates: dict[str, tuple[str, str, str]] = {}
+    applied_segment_ids: set[str] = set()
 
-    output_by_id = {str(output.segment_id): str(output.target_text).strip() for output in outputs}
-    row_updates: dict[str, tuple[str, str]] = {}
+    if getattr(backend, "supports_condensation", False):
+        try:
+            outputs = backend.condense_batch(
+                items=[item for _, item in candidates],
+                target_lang=request.target_lang,
+            )
+        except Exception as exc:  # pragma: no cover - network dependent
+            logger.warning("Condense batch failed: %s; trying local rule-based fallback.", exc)
+        else:
+            output_by_id = {str(output.segment_id): str(output.target_text).strip() for output in outputs}
+            for row, inp in candidates:
+                seg_id = str(row["segment_id"])
+                update = _apply_condensed_text(
+                    row=row,
+                    inp=inp,
+                    new_text=output_by_id.get(seg_id, ""),
+                    request=request,
+                    method="backend",
+                    reason="backend_condense",
+                )
+                if update is None:
+                    continue
+                row_updates[seg_id] = update
+                applied_segment_ids.add(seg_id)
+    else:
+        logger.info(
+            "Condense mode '%s' requested but backend %r does not support condensation; using local rule-based fallback.",
+            mode,
+            getattr(backend, "backend_name", type(backend).__name__),
+        )
+
     for row, inp in candidates:
         seg_id = str(row["segment_id"])
-        new_text = output_by_id.get(seg_id, "")
-        original_text = str(row["target_text"])
-        original_estimated = float(row["duration_budget"].get("estimated_tts_duration_sec") or 0.0)
-        if not new_text:
-            row["condense_status"] = "condense_failed"
+        if seg_id in applied_segment_ids:
             continue
-        if _missing_protected_terms(new_text, inp.protected_terms):
+        fallback = _rule_based_condense_text(row=row, inp=inp, request=request)
+        if fallback is None:
             row["condense_status"] = "condense_failed"
+            row["condense_method"] = "none"
             continue
-        new_estimated = estimate_tts_duration(new_text, target_lang=request.target_lang)
-        if new_estimated >= original_estimated:
-            row["condense_status"] = "condense_failed"
+        new_text, reason = fallback
+        update = _apply_condensed_text(
+            row=row,
+            inp=inp,
+            new_text=new_text,
+            request=request,
+            method="rule_based",
+            reason=reason,
+        )
+        if update is None:
             continue
-        row["target_text"] = normalize_target_with_glossary(
-            source_text=str(row.get("source_text") or ""),
-            target_text=new_text,
-            glossary_matches=list(row.get("glossary_matches", [])),
-        )
-        row["duration_budget"] = build_duration_budget(
-            source_duration_sec=float(row.get("duration") or 0.0),
-            target_text=str(row["target_text"]),
-            target_lang=request.target_lang,
-        )
-        row["qa_flags"] = build_qa_flags(
-            source_text=str(row.get("source_text") or ""),
-            target_text=str(row["target_text"]),
-            glossary_matches=list(row.get("glossary_matches", [])),
-            duration_budget=row["duration_budget"],
-        )
-        if "condensed" not in row["qa_flags"]:
-            row["qa_flags"].append("condensed")
-        fit_level = str(row["duration_budget"].get("fit_level"))
-        row["condense_status"] = "condensed" if fit_level != "risky" else "still_risky"
-        row_updates[seg_id] = (str(row["target_text"]), row["condense_status"])
+        row_updates[seg_id] = update
+        applied_segment_ids.add(seg_id)
 
     if not row_updates:
         return
@@ -444,9 +445,10 @@ def _apply_condensation(
                 continue
             seg_id = str(seg.get("segment_id") or "")
             if seg_id in row_updates:
-                new_text, status = row_updates[seg_id]
+                new_text, status, method = row_updates[seg_id]
                 seg["draft_text"] = new_text
                 seg["condense_status"] = status
+                seg["condense_method"] = method
                 changed = True
         if changed:
             rebuilt = [
@@ -460,6 +462,133 @@ def _apply_condensation(
                 unit["duration_summary"] = summarize_duration_budgets(
                     [row["duration_budget"] for row in kept]
                 )
+
+
+def _apply_condensed_text(
+    *,
+    row: dict[str, object],
+    inp: CondenseInput,
+    new_text: str,
+    request: TranslationRequest,
+    method: str,
+    reason: str,
+) -> tuple[str, str, str] | None:
+    condensed = new_text.strip()
+    if not condensed:
+        row["condense_status"] = "condense_failed"
+        return None
+    if _missing_protected_terms(condensed, inp.protected_terms):
+        row["condense_status"] = "condense_failed"
+        return None
+
+    normalized = normalize_target_with_glossary(
+        source_text=str(row.get("source_text") or ""),
+        target_text=condensed,
+        glossary_matches=list(row.get("glossary_matches", [])),
+    )
+    original_estimated = float(row["duration_budget"].get("estimated_tts_duration_sec") or 0.0)
+    new_estimated = estimate_tts_duration(normalized, target_lang=request.target_lang)
+    if new_estimated >= original_estimated:
+        row["condense_status"] = "condense_failed"
+        return None
+
+    row["target_text"] = normalized
+    row["duration_budget"] = build_duration_budget(
+        source_duration_sec=float(row.get("duration") or 0.0),
+        target_text=str(row["target_text"]),
+        target_lang=request.target_lang,
+    )
+    row["qa_flags"] = build_qa_flags(
+        source_text=str(row.get("source_text") or ""),
+        target_text=str(row["target_text"]),
+        glossary_matches=list(row.get("glossary_matches", [])),
+        duration_budget=row["duration_budget"],
+    )
+    if "condensed" not in row["qa_flags"]:
+        row["qa_flags"].append("condensed")
+    fit_level = str(row["duration_budget"].get("fit_level"))
+    row["condense_status"] = "condensed" if fit_level != "risky" else "still_risky"
+    row["condense_method"] = method
+    row["condense_reason"] = reason
+    return str(row["target_text"]), row["condense_status"], method
+
+
+def _rule_based_condense_text(
+    *,
+    row: dict[str, object],
+    inp: CondenseInput,
+    request: TranslationRequest,
+) -> tuple[str, str] | None:
+    if canonical_language_code(request.target_lang) != "en":
+        return None
+
+    from ..repair.rewrite import rewrite_for_dubbing
+
+    glossary = _glossary_entries_from_matches(
+        list(row.get("glossary_matches", [])),
+        target_lang=request.target_lang,
+    )
+    candidates = rewrite_for_dubbing(
+        segment_id=str(row.get("segment_id") or inp.segment_id),
+        source_text=inp.source_text,
+        current_target_text=inp.current_target_text,
+        source_duration_sec=inp.target_duration_sec,
+        target_lang=request.target_lang,
+        glossary=glossary,
+    )
+    scored: list[tuple[int, float, str, str]] = []
+    for candidate in candidates:
+        if candidate.reason in _UNSAFE_RULE_BASED_CONDENSE_REASONS:
+            continue
+        text = normalize_target_with_glossary(
+            source_text=inp.source_text,
+            target_text=candidate.target_text,
+            glossary_matches=list(row.get("glossary_matches", [])),
+        )
+        if not text or _missing_protected_terms(text, inp.protected_terms):
+            continue
+        estimated = estimate_tts_duration(text, target_lang=request.target_lang)
+        if estimated >= inp.current_estimated_sec:
+            continue
+        budget = build_duration_budget(
+            source_duration_sec=inp.target_duration_sec,
+            target_text=text,
+            target_lang=request.target_lang,
+        )
+        fit_level = str(budget.get("fit_level"))
+        fit_rank = {"fit": 0, "review": 1, "risky": 2}.get(fit_level, 3)
+        scored.append((fit_rank, estimated, text, candidate.reason))
+    if not scored:
+        return None
+
+    scored.sort(key=lambda item: (item[0], -item[1] if item[0] == 0 else item[1]))
+    _, _, text, reason = scored[0]
+    return text, reason
+
+
+def _glossary_entries_from_matches(
+    matches: list[object],
+    *,
+    target_lang: str,
+) -> list[GlossaryEntry]:
+    entries: list[GlossaryEntry] = []
+    canonical = canonical_language_code(target_lang)
+    for index, match in enumerate(matches, start=1):
+        if not isinstance(match, dict):
+            continue
+        source = str(match.get("matched_text") or "").strip()
+        target = str(match.get("replacement_text") or "").strip()
+        if not source or not target:
+            continue
+        entries.append(
+            GlossaryEntry(
+                entry_id=str(match.get("entry_id") or f"match-{index:04d}"),
+                source_variants=(source,),
+                targets={target_lang: target, canonical: target},
+                normalized_source=source,
+            )
+        )
+    return entries
 
 
 def _missing_protected_terms(text: str, terms: list[str]) -> bool:

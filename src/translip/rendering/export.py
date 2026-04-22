@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import statistics
 from pathlib import Path
 from typing import Any
 
@@ -57,6 +58,7 @@ def build_mix_report(
     for item in skipped_items:
         reason = str(item.get("mix_status") or "skipped")
         skip_counts[reason] = skip_counts.get(reason, 0) + 1
+    quality_summary = _build_quality_summary(items=[*placed_items, *skipped_items])
     return {
         "input": {
             "segments_path": str(request.segments_path),
@@ -83,6 +85,7 @@ def build_mix_report(
             "fit_strategy_counts": fit_counts,
             "skip_reason_counts": skip_counts,
             "total_duration_sec": round(total_duration_sec, 3),
+            "quality_summary": quality_summary,
         },
         "placed_segments": placed_items,
         "skipped_segments": skipped_items,
@@ -148,6 +151,117 @@ def build_render_manifest(
         "status": "failed" if error else "succeeded",
         "error": error,
     }
+
+
+def _build_quality_summary(*, items: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "total_count": len(items),
+        "overall_status_counts": _count_by(items, "overall_status"),
+        "duration_status_counts": _count_by(items, "duration_status"),
+        "speaker_status_counts": _count_by(items, "speaker_status"),
+        "intelligibility_status_counts": _count_by(items, "intelligibility_status"),
+        "mix_status_counts": _count_by(items, "mix_status"),
+        "failure_reason_counts": _failure_reason_counts(items),
+        "qa_flag_counts": _token_counts(items, "qa_flags"),
+        "note_counts": _token_counts(items, "notes"),
+        "averages": {
+            "speaker_similarity": _average_number(items, "speaker_similarity"),
+            "text_similarity": _average_number(items, "text_similarity"),
+            "duration_ratio": _average_duration_ratio(items),
+            "quality_score": _average_number(items, "quality_score"),
+        },
+        "medians": {
+            "speaker_similarity": _median_number(items, "speaker_similarity"),
+            "text_similarity": _median_number(items, "text_similarity"),
+            "duration_ratio": _median_duration_ratio(items),
+            "quality_score": _median_number(items, "quality_score"),
+        },
+    }
+
+
+def _count_by(items: list[dict[str, Any]], key: str) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for item in items:
+        value = str(item.get(key) or "unknown")
+        counts[value] = counts.get(value, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def _token_counts(items: list[dict[str, Any]], key: str) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for item in items:
+        values = item.get(key) or []
+        if not isinstance(values, list):
+            continue
+        for value in values:
+            token = str(value)
+            counts[token] = counts.get(token, 0) + 1
+    return dict(sorted(counts.items(), key=lambda pair: (-pair[1], pair[0])))
+
+
+def _failure_reason_counts(items: list[dict[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for item in items:
+        if item.get("overall_status") != "failed":
+            continue
+        reasons: list[str] = []
+        if item.get("duration_status") == "failed":
+            reasons.append("duration")
+        if item.get("speaker_status") == "failed":
+            reasons.append("speaker")
+        if item.get("intelligibility_status") == "failed":
+            reasons.append("intelligibility")
+        reason = "+".join(reasons) if reasons else "overall"
+        counts[reason] = counts.get(reason, 0) + 1
+    return dict(sorted(counts.items(), key=lambda pair: (-pair[1], pair[0])))
+
+
+def _average_number(items: list[dict[str, Any]], key: str) -> float | None:
+    values = _numbers(items, key)
+    if not values:
+        return None
+    return round(statistics.mean(values), 4)
+
+
+def _median_number(items: list[dict[str, Any]], key: str) -> float | None:
+    values = _numbers(items, key)
+    if not values:
+        return None
+    return round(statistics.median(values), 4)
+
+
+def _numbers(items: list[dict[str, Any]], key: str) -> list[float]:
+    values: list[float] = []
+    for item in items:
+        value = item.get(key)
+        if isinstance(value, (int, float)):
+            values.append(float(value))
+    return values
+
+
+def _average_duration_ratio(items: list[dict[str, Any]]) -> float | None:
+    values = _duration_ratios(items)
+    if not values:
+        return None
+    return round(statistics.mean(values), 4)
+
+
+def _median_duration_ratio(items: list[dict[str, Any]]) -> float | None:
+    values = _duration_ratios(items)
+    if not values:
+        return None
+    return round(statistics.median(values), 4)
+
+
+def _duration_ratios(items: list[dict[str, Any]]) -> list[float]:
+    ratios: list[float] = []
+    for item in items:
+        generated = item.get("generated_duration_sec")
+        source = item.get("source_duration_sec")
+        if not isinstance(generated, (int, float)) or not isinstance(source, (int, float)) or source <= 0:
+            continue
+        ratios.append(float(generated) / float(source))
+    return ratios
 
 
 __all__ = [

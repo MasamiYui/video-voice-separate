@@ -43,6 +43,28 @@ class FakeCondenseBackend(FakeBackend):
         ]
 
 
+class LongEnglishBackend(FakeBackend):
+    def translate_batch(self, *, items, source_lang, target_lang):
+        return [
+            BackendSegmentOutput(
+                segment_id=item.segment_id,
+                target_text="This is a very long translated sentence for a one second slot.",
+            )
+            for item in items
+        ]
+
+
+class TrimOnlyLongEnglishBackend(FakeBackend):
+    def translate_batch(self, *, items, source_lang, target_lang):
+        return [
+            BackendSegmentOutput(
+                segment_id=item.segment_id,
+                target_text="Alpha beta gamma delta epsilon zeta eta theta.",
+            )
+            for item in items
+        ]
+
+
 def test_build_context_units_merges_same_speaker_with_small_gap() -> None:
     segments = [
         SegmentRecord(
@@ -300,6 +322,57 @@ def test_condense_unsupported_backend_falls_back_gracefully(tmp_path: Path) -> N
     assert seg["condense_status"] == "skipped"
 
 
+def test_condense_unsupported_backend_uses_rule_based_fallback(tmp_path: Path) -> None:
+    segments_path, profiles_path = _write_fixtures(
+        tmp_path,
+        segment_text="人间天堂",
+        duration=0.7,
+    )
+    result = translate_script(
+        TranslationRequest(
+            segments_path=segments_path,
+            profiles_path=profiles_path,
+            output_dir=tmp_path / "output",
+            target_lang="en",
+            condense_mode="smart",
+        ),
+        backend_override=LongEnglishBackend(),
+    )
+    payload = json.loads(result.artifacts.translation_json_path.read_text(encoding="utf-8"))
+    editable = json.loads(result.artifacts.editable_json_path.read_text(encoding="utf-8"))
+    seg = payload["segments"][0]
+    assert seg["original_target_text"] == "This is a very long translated sentence for a one second slot."
+    assert seg["target_text"] == "Paradise."
+    assert seg["condense_status"] == "condensed"
+    assert seg["condense_method"] == "rule_based"
+    assert payload["stats"]["condense_counts"]["condensed"] == 1
+    assert payload["stats"]["condense_method_counts"]["rule_based"] == 1
+    assert editable["units"][0]["segments"][0]["condense_method"] == "rule_based"
+
+
+def test_condense_rule_based_fallback_rejects_unsafe_word_trimming(tmp_path: Path) -> None:
+    segments_path, profiles_path = _write_fixtures(
+        tmp_path,
+        segment_text="我先洗个澡",
+        duration=0.7,
+    )
+    result = translate_script(
+        TranslationRequest(
+            segments_path=segments_path,
+            profiles_path=profiles_path,
+            output_dir=tmp_path / "output",
+            target_lang="en",
+            condense_mode="smart",
+        ),
+        backend_override=TrimOnlyLongEnglishBackend(),
+    )
+    payload = json.loads(result.artifacts.translation_json_path.read_text(encoding="utf-8"))
+    seg = payload["segments"][0]
+    assert seg["target_text"] == "Alpha beta gamma delta epsilon zeta eta theta."
+    assert seg["condense_status"] == "condense_failed"
+    assert seg["condense_method"] == "none"
+
+
 def test_condense_payload_includes_condense_counts(tmp_path: Path) -> None:
     segments_path, profiles_path = _write_fixtures(tmp_path)
     result = translate_script(
@@ -314,4 +387,5 @@ def test_condense_payload_includes_condense_counts(tmp_path: Path) -> None:
     )
     payload = json.loads(result.artifacts.translation_json_path.read_text(encoding="utf-8"))
     assert "condense_counts" in payload["stats"]
+    assert payload["stats"]["condense_method_counts"] == {"none": 1}
     assert payload["backend"]["condense_mode"] == "off"

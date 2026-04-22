@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from translip.types import ExportVideoRequest, MediaInfo
 from translip.types import PipelineRequest
 
@@ -127,7 +129,7 @@ def test_export_video_infers_inputs_from_pipeline_root_and_writes_delivery_artif
 
     assert len(mux_calls) == 2
     assert mux_calls[0]["input_audio_path"] == preview_mix_path.resolve()
-    assert mux_calls[1]["input_audio_path"] == preview_mix_path.resolve()
+    assert mux_calls[1]["input_audio_path"] == dub_voice_path.resolve()
     assert mux_calls[0]["video_codec"] == "copy"
     assert mux_calls[0]["audio_codec"] == "aac"
     assert mux_calls[0]["end_policy"] == "trim_audio_to_video"
@@ -136,6 +138,8 @@ def test_export_video_infers_inputs_from_pipeline_root_and_writes_delivery_artif
     report = json.loads(result.artifacts.report_path.read_text(encoding="utf-8"))
     assert manifest["status"] == "succeeded"
     assert manifest["request"]["target_lang"] == "en"
+    assert manifest["input"]["preview_audio_path"] == str(preview_mix_path.resolve())
+    assert manifest["input"]["dub_audio_path"] == str(dub_voice_path.resolve())
     assert report["summary"]["exported_count"] == 2
     assert report["summary"]["failed_count"] == 0
 
@@ -143,7 +147,8 @@ def test_export_video_infers_inputs_from_pipeline_root_and_writes_delivery_artif
 def test_export_video_can_export_preview_only(tmp_path: Path, monkeypatch) -> None:
     from translip.delivery.runner import export_video
 
-    pipeline_root, input_video_path, preview_mix_path, _dub_voice_path = _build_task_e_fixture(tmp_path)
+    pipeline_root, input_video_path, preview_mix_path, dub_voice_path = _build_task_e_fixture(tmp_path)
+    dub_voice_path.unlink()
     output_dir = tmp_path / "delivery"
     mux_calls: list[Path] = []
 
@@ -186,13 +191,34 @@ def test_export_video_can_export_preview_only(tmp_path: Path, monkeypatch) -> No
     assert report["summary"]["requested_exports"] == ["preview"]
 
 
+def test_export_video_requires_dub_voice_for_dub_export(tmp_path: Path, monkeypatch) -> None:
+    from translip.delivery.runner import export_video
+
+    pipeline_root, input_video_path, _preview_mix_path, dub_voice_path = _build_task_e_fixture(tmp_path)
+    dub_voice_path.unlink()
+
+    monkeypatch.setattr("translip.delivery.runner.probe_media", _fake_media_info)
+
+    with pytest.raises(Exception, match="Task G dub voice does not exist"):
+        export_video(
+            ExportVideoRequest(
+                input_video_path=input_video_path,
+                task_e_dir=pipeline_root / "task-e" / "voice",
+                output_dir=tmp_path / "delivery-dub-missing",
+                target_lang="en",
+                export_preview=False,
+                export_dub=True,
+            )
+        )
+
+
 def test_bilingual_export_can_preserve_hard_subtitles_and_only_burn_english(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
     from translip.delivery.runner import export_video
 
-    pipeline_root, input_video_path, preview_mix_path, _dub_voice_path = _build_task_e_fixture(tmp_path)
+    pipeline_root, input_video_path, _preview_mix_path, dub_voice_path = _build_task_e_fixture(tmp_path)
     english_srt = pipeline_root / "ocr-translate" / "ocr_subtitles.en.srt"
     chinese_srt = pipeline_root / "ocr-detect" / "ocr_subtitles.source.srt"
     _touch(english_srt)
@@ -266,7 +292,7 @@ def test_bilingual_export_can_preserve_hard_subtitles_and_only_burn_english(
     assert srt_calls == [english_srt.resolve()]
     assert merge_calls == []
     assert mux_calls[0]["input_video_path"] == input_video_path.resolve()
-    assert mux_calls[0]["input_audio_path"] == preview_mix_path.resolve()
+    assert mux_calls[0]["input_audio_path"] == dub_voice_path.resolve()
 
     manifest = json.loads(result.artifacts.manifest_path.read_text(encoding="utf-8"))
     report = json.loads(result.artifacts.report_path.read_text(encoding="utf-8"))
