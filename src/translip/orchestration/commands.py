@@ -97,6 +97,10 @@ def task_b_manifest_path(request: PipelineRequest) -> Path:
     return task_b_bundle_dir(request) / "task-b-manifest.json"
 
 
+def task_b_voice_bank_path(request: PipelineRequest) -> Path:
+    return task_b_bundle_dir(request) / f"voice_bank.{request.target_lang}.json"
+
+
 def task_c_bundle_dir(request: PipelineRequest) -> Path:
     return request.output_root / "task-c" / "voice"
 
@@ -256,6 +260,9 @@ def build_task_d_command(request: PipelineRequest, *, speaker_id: str, segment_i
         "--device",
         request.device,
     ]
+    voice_bank_path = task_b_voice_bank_path(request)
+    if voice_bank_path.exists():
+        command.extend(["--voice-bank", str(voice_bank_path)])
     if segment_ids:
         for segment_id in segment_ids:
             command.extend(["--segment-id", segment_id])
@@ -345,6 +352,7 @@ __all__ = [
     "task_b_matches_path",
     "task_b_profiles_path",
     "task_b_registry_path",
+    "task_b_voice_bank_path",
     "task_c_manifest_path",
     "task_c_translation_path",
     "task_d_report_path",

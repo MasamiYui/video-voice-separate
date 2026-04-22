@@ -35,6 +35,7 @@ from .config import (
 )
 from .delivery.runner import export_video
 from .dubbing.runner import synthesize_speaker
+from .dubbing.voice_bank import VoiceBankRequest, build_voice_bank
 from .models.cdx23_dialogue import Cdx23DialogueSeparator
 from .orchestration.request import build_pipeline_request
 from .orchestration.runner import run_pipeline
@@ -178,6 +179,27 @@ def build_parser() -> argparse.ArgumentParser:
     speaker_parser.add_argument("--update-registry", action="store_true")
     speaker_parser.add_argument("--keep-intermediate", action="store_true")
 
+    voice_bank_parser = subparsers.add_parser(
+        "build-voice-bank",
+        help="Build a reusable speaker reference bank from Task B profiles and optional Task D reports",
+    )
+    voice_bank_parser.add_argument("--profiles", required=True, help="Task B speaker_profiles.json path")
+    voice_bank_parser.add_argument("--output-dir", default="output-voice-bank", help="Voice bank output directory")
+    voice_bank_parser.add_argument(
+        "--task-d-report",
+        action="append",
+        dest="task_d_reports",
+        default=None,
+        help="Optional Task D speaker_segments.<lang>.json path; may be passed multiple times",
+    )
+    voice_bank_parser.add_argument(
+        "--target-lang",
+        default=DEFAULT_TRANSLATION_TARGET_LANG,
+        help="Target language code used in output file names, e.g. en",
+    )
+    voice_bank_parser.add_argument("--max-references-per-speaker", type=int, default=7)
+    voice_bank_parser.add_argument("--no-composite", action="store_true", help="Disable composite reference generation")
+
     translate_parser = subparsers.add_parser(
         "translate-script",
         help="Generate a multilingual translation script for downstream dubbing",
@@ -232,6 +254,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     synthesize_parser.add_argument("--device", default=DEFAULT_DEVICE, choices=["auto", "cpu", "cuda", "mps"])
     synthesize_parser.add_argument("--reference-clip", default=None, help="Optional reference clip override")
+    synthesize_parser.add_argument("--voice-bank", default=None, help="Optional voice_bank.<lang>.json path for reference selection")
     synthesize_parser.add_argument(
         "--segment-id",
         action="append",
@@ -748,6 +771,24 @@ def main(argv: list[str] | None = None) -> int:
         print(f"manifest={result.artifacts.manifest_path}")
         return 0
 
+    if args.command == "build-voice-bank":
+        result = build_voice_bank(
+            VoiceBankRequest(
+                profiles_path=args.profiles,
+                output_dir=args.output_dir,
+                target_lang=args.target_lang,
+                task_d_report_paths=args.task_d_reports or [],
+                max_references_per_speaker=args.max_references_per_speaker,
+                include_composites=not args.no_composite,
+            )
+        )
+        print(f"voice_bank={result.artifacts.voice_bank_path}")
+        print(f"report={result.artifacts.report_path}")
+        print(f"manifest={result.artifacts.manifest_path}")
+        print(f"speaker_count={result.voice_bank['stats']['speaker_count']}")
+        print(f"reference_count={result.voice_bank['stats']['reference_count']}")
+        return 0
+
     if args.command == "translate-script":
         request = TranslationRequest(
             segments_path=args.segments,
@@ -780,6 +821,7 @@ def main(argv: list[str] | None = None) -> int:
             backend=args.backend,
             device=args.device,
             reference_clip_path=args.reference_clip,
+            voice_bank_path=args.voice_bank,
             segment_ids=args.segment_ids,
             max_segments=args.max_segments,
             keep_intermediate=args.keep_intermediate,

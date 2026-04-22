@@ -27,6 +27,7 @@ def build_delivery_manifest(
     started_at: str,
     finished_at: str,
     elapsed_sec: float,
+    task_e_content_quality: dict[str, Any] | None = None,
     error: str | None = None,
 ) -> dict[str, Any]:
     return {
@@ -64,6 +65,7 @@ def build_delivery_manifest(
             "final_preview_video": str(preview_video_path) if preview_video_path else None,
             "final_dub_video": str(dub_video_path) if dub_video_path else None,
         },
+        "content_quality": task_e_content_quality,
         "timing": {
             "started_at": started_at,
             "finished_at": finished_at,
@@ -84,6 +86,7 @@ def build_delivery_report(
     dub_audio_path: Path,
     task_e_manifest_path: Path,
     status: str,
+    task_e_content_quality: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     requested_exports: list[str] = []
     if request.export_preview:
@@ -98,6 +101,11 @@ def build_delivery_report(
             "exported_count": sum(1 for item in outputs if item.get("status") == "succeeded"),
             "failed_count": failed_count,
             "target_lang": target_lang,
+            "content_status": (
+                str(task_e_content_quality.get("status"))
+                if isinstance(task_e_content_quality, dict) and task_e_content_quality.get("status")
+                else None
+            ),
         },
         "input": {
             "video_path": str(request.input_video_path),
@@ -120,6 +128,7 @@ def build_delivery_report(
             "bilingual_export_strategy": request.bilingual_export_strategy,
         },
         "outputs": outputs,
+        "content_quality": task_e_content_quality,
     }
 
 

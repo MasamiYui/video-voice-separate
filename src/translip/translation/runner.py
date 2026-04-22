@@ -10,6 +10,7 @@ from ..types import TranslationArtifacts, TranslationRequest, TranslationResult
 from ..utils.files import ensure_directory
 from .backend import BackendSegmentInput, CondenseInput, canonical_language_code, output_tag_for_language
 from .duration import build_duration_budget, estimate_tts_duration, summarize_duration_budgets
+from .dubbing_script import polish_dubbing_script
 from .export import (
     build_editable_payload,
     build_translation_manifest,
@@ -18,7 +19,14 @@ from .export import (
     write_json,
     write_translation_srt,
 )
-from .glossary import GlossaryEntry, apply_glossary, load_glossary, normalize_target_with_glossary
+from .glossary import (
+    GlossaryEntry,
+    apply_glossary,
+    built_in_dubbing_glossary,
+    load_glossary,
+    merge_glossaries,
+    normalize_target_with_glossary,
+)
 from .qa import build_qa_flags
 from .units import ContextUnit, SegmentRecord, build_context_units
 
@@ -58,7 +66,14 @@ def translate_script(
 
         segments = _load_segment_records(segments_payload, profiles_payload)
         units = build_context_units(segments)
-        glossary = load_glossary(Path(normalized_request.glossary_path) if normalized_request.glossary_path else None)
+        user_glossary = load_glossary(Path(normalized_request.glossary_path) if normalized_request.glossary_path else None)
+        glossary = merge_glossaries(
+            user_glossary=user_glossary,
+            built_in_glossary=built_in_dubbing_glossary(
+                source_lang=normalized_request.source_lang,
+                target_lang=normalized_request.target_lang,
+            ),
+        )
         backend = backend_override if backend_override is not None else build_translation_backend(normalized_request)
 
         translated_segments, editable_units, glossary_match_count = _translate_units(
@@ -258,6 +273,15 @@ def _translate_units(
                 target_text=target_text,
                 glossary_matches=glossary_matches,
             )
+            script_decision = polish_dubbing_script(
+                source_text=segment.text,
+                target_text=target_text,
+                source_lang=request.source_lang,
+                target_lang=request.target_lang,
+                source_duration_sec=segment.duration,
+                glossary_matches=glossary_matches,
+            )
+            target_text = script_decision.target_text
             duration_budget = build_duration_budget(
                 source_duration_sec=segment.duration,
                 target_text=target_text,
@@ -280,6 +304,10 @@ def _translate_units(
                 "prepared_source_text": prepared_text,
                 "target_text": target_text,
                 "original_target_text": target_text,
+                "dubbing_text": script_decision.dubbing_text,
+                "script_status": script_decision.script_status,
+                "script_risk_flags": script_decision.risk_flags,
+                "script_notes": script_decision.notes,
                 "condense_status": "skipped",
                 "condense_method": "none",
                 "context_unit_id": unit.unit_id,
@@ -311,6 +339,9 @@ def _translate_units(
                         "segment_id": row["segment_id"],
                         "source_text": row["source_text"],
                         "draft_text": row["target_text"],
+                        "dubbing_text": row["dubbing_text"],
+                        "script_status": row["script_status"],
+                        "script_risk_flags": row["script_risk_flags"],
                         "qa_flags": row["qa_flags"],
                         "fit_level": row["duration_budget"]["fit_level"],
                     }
@@ -446,7 +477,12 @@ def _apply_condensation(
             seg_id = str(seg.get("segment_id") or "")
             if seg_id in row_updates:
                 new_text, status, method = row_updates[seg_id]
+                source_row = next((row for row in segment_rows if str(row["segment_id"]) == seg_id), None)
                 seg["draft_text"] = new_text
+                if source_row is not None:
+                    seg["dubbing_text"] = source_row.get("dubbing_text")
+                    seg["script_status"] = source_row.get("script_status")
+                    seg["script_risk_flags"] = source_row.get("script_risk_flags")
                 seg["condense_status"] = status
                 seg["condense_method"] = method
                 changed = True
@@ -486,6 +522,15 @@ def _apply_condensed_text(
         target_text=condensed,
         glossary_matches=list(row.get("glossary_matches", [])),
     )
+    script_decision = polish_dubbing_script(
+        source_text=str(row.get("source_text") or ""),
+        target_text=normalized,
+        source_lang=request.source_lang,
+        target_lang=request.target_lang,
+        source_duration_sec=float(row.get("duration") or 0.0),
+        glossary_matches=list(row.get("glossary_matches", [])),
+    )
+    normalized = script_decision.target_text
     original_estimated = float(row["duration_budget"].get("estimated_tts_duration_sec") or 0.0)
     new_estimated = estimate_tts_duration(normalized, target_lang=request.target_lang)
     if new_estimated >= original_estimated:
@@ -493,6 +538,10 @@ def _apply_condensed_text(
         return None
 
     row["target_text"] = normalized
+    row["dubbing_text"] = script_decision.dubbing_text
+    row["script_status"] = script_decision.script_status
+    row["script_risk_flags"] = script_decision.risk_flags
+    row["script_notes"] = script_decision.notes
     row["duration_budget"] = build_duration_budget(
         source_duration_sec=float(row.get("duration") or 0.0),
         target_text=str(row["target_text"]),

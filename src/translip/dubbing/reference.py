@@ -62,6 +62,24 @@ def select_reference_candidates(
     return sorted(candidates, key=lambda item: item.score, reverse=True)
 
 
+def select_voice_bank_reference_candidates(
+    *,
+    voice_bank_payload: dict[str, Any],
+    speaker_id: str,
+) -> list[ReferenceCandidate]:
+    for speaker in voice_bank_payload.get("speakers", []):
+        if not isinstance(speaker, dict) or str(speaker.get("speaker_id") or "") != speaker_id:
+            continue
+        candidates = [
+            _voice_bank_reference(speaker=speaker, raw=raw)
+            for raw in speaker.get("references", [])
+            if isinstance(raw, dict)
+        ]
+        candidates = [candidate for candidate in candidates if candidate is not None]
+        return sorted(candidates, key=lambda item: item.score, reverse=True)
+    return []
+
+
 def prepare_reference_package(
     candidate: ReferenceCandidate,
     *,
@@ -85,6 +103,35 @@ def prepare_reference_package(
         duration_sec=round(float(len(prepared) / sample_rate), 3),
         score=round(candidate.score, 3),
         selection_reason=candidate.selection_reason,
+    )
+
+
+def _voice_bank_reference(*, speaker: dict[str, Any], raw: dict[str, Any]) -> ReferenceCandidate | None:
+    path = str(raw.get("audio_path") or "").strip()
+    text = str(raw.get("text") or "").strip()
+    if not path or not text:
+        return None
+    risk_flags = raw.get("risk_flags", [])
+    if isinstance(risk_flags, list) and "missing_file" in {str(flag) for flag in risk_flags}:
+        return None
+    resolved_path = Path(path).expanduser().resolve()
+    if not resolved_path.exists():
+        return None
+    duration_sec = float(raw.get("duration_sec") or raw.get("duration") or 0.0)
+    if duration_sec <= 0:
+        return None
+    quality_score = float(raw.get("quality_score") or raw.get("heuristic_score") or 0.0)
+    reference_type = str(raw.get("type") or "voice_bank")
+    reason = str(raw.get("selection_reason") or "")
+    return ReferenceCandidate(
+        profile_id=str(speaker.get("profile_id") or ""),
+        speaker_id=str(speaker.get("speaker_id") or ""),
+        path=resolved_path,
+        text=text,
+        duration_sec=round(duration_sec, 3),
+        rms=float(raw.get("rms") or 0.0),
+        score=round(quality_score, 4),
+        selection_reason=f"voice_bank:{reference_type},{reason}".rstrip(","),
     )
 
 

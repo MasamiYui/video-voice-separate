@@ -200,6 +200,8 @@ def render_dub(request: RenderDubRequest) -> RenderDubResult:
             placed_count=len(placed_items),
             skipped_count=len(skipped_items),
         )
+        manifest["resolved"]["content_status"] = mix_report["stats"]["content_quality"]["status"]
+        manifest["resolved"]["content_quality_reasons"] = mix_report["stats"]["content_quality"]["reasons"]
         write_json(manifest, manifest_path)
         remove_tree(work_dir)
         return RenderDubResult(

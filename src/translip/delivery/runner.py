@@ -61,6 +61,7 @@ def export_video(request: ExportVideoRequest) -> ExportVideoResult:
 
     task_e_manifest_path = normalized_request.task_e_dir / "task-e-manifest.json"
     task_e_manifest = _load_json(task_e_manifest_path)
+    task_e_content_quality = _resolve_task_e_content_quality(task_e_manifest)
     preview_audio_path = _resolve_preview_audio_path(normalized_request, task_e_manifest)
     final_dub_audio_path = (
         _resolve_dub_audio_path(normalized_request, task_e_manifest)
@@ -155,6 +156,7 @@ def export_video(request: ExportVideoRequest) -> ExportVideoResult:
             started_at=started_at,
             finished_at=now_iso(),
             elapsed_sec=time.monotonic() - started_monotonic,
+            task_e_content_quality=task_e_content_quality,
         )
         report = build_delivery_report(
             request=normalized_request,
@@ -165,6 +167,7 @@ def export_video(request: ExportVideoRequest) -> ExportVideoResult:
             dub_audio_path=final_dub_audio_path,
             task_e_manifest_path=task_e_manifest_path,
             status="succeeded",
+            task_e_content_quality=task_e_content_quality,
         )
         write_json(manifest, manifest_path)
         write_json(report, report_path)
@@ -193,6 +196,7 @@ def export_video(request: ExportVideoRequest) -> ExportVideoResult:
             started_at=started_at,
             finished_at=now_iso(),
             elapsed_sec=time.monotonic() - started_monotonic,
+            task_e_content_quality=task_e_content_quality,
             error=str(exc),
         )
         report = build_delivery_report(
@@ -204,6 +208,7 @@ def export_video(request: ExportVideoRequest) -> ExportVideoResult:
             dub_audio_path=final_dub_audio_path,
             task_e_manifest_path=task_e_manifest_path,
             status="failed",
+            task_e_content_quality=task_e_content_quality,
         )
         write_json(manifest, manifest_path)
         write_json(report, report_path)
@@ -276,6 +281,28 @@ def _resolve_target_lang(request: ExportVideoRequest, task_e_manifest: dict[str,
         or task_e_manifest.get("request", {}).get("target_lang")
         or "en"
     )
+
+
+def _resolve_task_e_content_quality(task_e_manifest: dict[str, Any]) -> dict[str, Any] | None:
+    artifacts = task_e_manifest.get("artifacts", {})
+    mix_report_path = artifacts.get("mix_report_json") if isinstance(artifacts, dict) else None
+    if mix_report_path:
+        path = Path(str(mix_report_path)).expanduser().resolve()
+        if path.exists():
+            try:
+                mix_report = _load_json(path)
+                content_quality = mix_report.get("stats", {}).get("content_quality")
+                if isinstance(content_quality, dict):
+                    return content_quality
+            except Exception:
+                pass
+    resolved = task_e_manifest.get("resolved", {})
+    if isinstance(resolved, dict) and resolved.get("content_status"):
+        return {
+            "status": str(resolved.get("content_status")),
+            "reasons": [str(item) for item in resolved.get("content_quality_reasons", [])],
+        }
+    return None
 
 
 def _resolve_subtitle_style(style: SubtitleStyle | None, width: int, height: int) -> SubtitleStyle:

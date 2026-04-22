@@ -138,6 +138,43 @@ def test_normalize_target_with_glossary_forces_single_term_segments() -> None:
     assert normalized == "Dubai"
 
 
+def test_translate_script_uses_builtin_dubbing_glossary_and_phrase_overrides(tmp_path: Path) -> None:
+    segments_path = tmp_path / "segments.zh.json"
+    segments_path.write_text(
+        json.dumps(
+            _make_segments_payload([
+                {"id": "seg-0001", "start": 0.0, "end": 1.0, "duration": 1.0, "speaker_label": "SPEAKER_00", "text": "哪吒", "language": "zh"},
+                {"id": "seg-0002", "start": 1.1, "end": 2.0, "duration": 0.9, "speaker_label": "SPEAKER_00", "text": "报", "language": "zh"},
+            ]),
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    profiles_path = tmp_path / "speaker_profiles.json"
+    profiles_path.write_text(
+        json.dumps(_make_profiles_payload([("SPEAKER_00", "spk_0000")]), ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    result = translate_script(
+        TranslationRequest(
+            segments_path=segments_path,
+            profiles_path=profiles_path,
+            output_dir=tmp_path / "output",
+            target_lang="en",
+            batch_size=1,
+        ),
+        backend_override=FakeBackend(),
+    )
+
+    payload = json.loads(result.artifacts.translation_json_path.read_text(encoding="utf-8"))
+    by_id = {row["segment_id"]: row for row in payload["segments"]}
+    assert by_id["seg-0001"]["target_text"] == "Ne Zha."
+    assert by_id["seg-0001"]["glossary_matches"][0]["entry_id"] == "builtin-ne-zha"
+    assert by_id["seg-0002"]["target_text"] == "Report."
+    assert "needs_dubbing_unit" in by_id["seg-0002"]["script_risk_flags"]
+
+
 def test_duration_budget_marks_risky_when_target_is_much_longer() -> None:
     budget = build_duration_budget(
         source_duration_sec=1.0,

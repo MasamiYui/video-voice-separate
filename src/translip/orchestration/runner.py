@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from ..dubbing.planning import pick_segment_ids_for_speaker, pick_task_d_speaker_ids
+from ..dubbing.voice_bank import VoiceBankRequest, build_voice_bank
 from ..exceptions import TranslipError
 from ..types import PipelineRequest, PipelineResult, PipelineStageName
 from ..translation.backend import output_tag_for_language
@@ -44,6 +45,7 @@ from .commands import (
     task_b_matches_path,
     task_b_profiles_path,
     task_b_registry_path,
+    task_b_voice_bank_path,
     task_c_manifest_path,
     task_c_translation_path,
     task_d_report_path,
@@ -327,6 +329,14 @@ def execute_stage(
     if stage == "task-d":
         profiles_payload = _load_json(task_b_profiles_path(request))
         translation_payload = _load_json(task_c_translation_path(request))
+        if not task_b_voice_bank_path(request).exists():
+            build_voice_bank(
+                VoiceBankRequest(
+                    profiles_path=task_b_profiles_path(request),
+                    output_dir=task_b_profiles_path(request).parent,
+                    target_lang=request.target_lang,
+                )
+            )
         profile_count = len(profiles_payload.get("profiles", []))
         candidate_limit = (
             profile_count

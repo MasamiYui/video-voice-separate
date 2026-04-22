@@ -59,6 +59,11 @@ def build_mix_report(
         reason = str(item.get("mix_status") or "skipped")
         skip_counts[reason] = skip_counts.get(reason, 0) + 1
     quality_summary = _build_quality_summary(items=[*placed_items, *skipped_items])
+    content_quality = _build_content_quality(
+        placed_count=len(placed_items),
+        skipped_count=len(skipped_items),
+        quality_summary=quality_summary,
+    )
     return {
         "input": {
             "segments_path": str(request.segments_path),
@@ -86,6 +91,7 @@ def build_mix_report(
             "skip_reason_counts": skip_counts,
             "total_duration_sec": round(total_duration_sec, 3),
             "quality_summary": quality_summary,
+            "content_quality": content_quality,
         },
         "placed_segments": placed_items,
         "skipped_segments": skipped_items,
@@ -176,6 +182,52 @@ def _build_quality_summary(*, items: list[dict[str, Any]]) -> dict[str, Any]:
             "duration_ratio": _median_duration_ratio(items),
             "quality_score": _median_number(items, "quality_score"),
         },
+    }
+
+
+def _build_content_quality(
+    *,
+    placed_count: int,
+    skipped_count: int,
+    quality_summary: dict[str, Any],
+) -> dict[str, Any]:
+    total_count = int(quality_summary.get("total_count") or 0)
+    overall_counts = quality_summary.get("overall_status_counts", {})
+    speaker_counts = quality_summary.get("speaker_status_counts", {})
+    text_counts = quality_summary.get("intelligibility_status_counts", {})
+    failed_count = int(overall_counts.get("failed", 0)) if isinstance(overall_counts, dict) else 0
+    speaker_failed = int(speaker_counts.get("failed", 0)) if isinstance(speaker_counts, dict) else 0
+    intelligibility_failed = int(text_counts.get("failed", 0)) if isinstance(text_counts, dict) else 0
+    coverage_ratio = placed_count / max(total_count, 1)
+    failed_ratio = failed_count / max(total_count, 1)
+    speaker_failed_ratio = speaker_failed / max(total_count, 1)
+    intelligibility_failed_ratio = intelligibility_failed / max(total_count, 1)
+
+    reasons: list[str] = []
+    if total_count == 0:
+        reasons.append("no_renderable_segments")
+    if skipped_count > 0 or coverage_ratio < 0.98:
+        reasons.append("coverage_below_deliverable_threshold")
+    if failed_ratio > 0.05:
+        reasons.append("upstream_failed_segments")
+    if speaker_failed_ratio > 0.10:
+        reasons.append("speaker_similarity_failed")
+    if intelligibility_failed_ratio > 0.10:
+        reasons.append("intelligibility_failed")
+
+    if total_count == 0 or skipped_count > max(0, total_count * 0.20):
+        status = "blocked"
+    elif reasons:
+        status = "review_required"
+    else:
+        status = "deliverable"
+    return {
+        "status": status,
+        "coverage_ratio": round(coverage_ratio, 4),
+        "failed_ratio": round(failed_ratio, 4),
+        "speaker_failed_ratio": round(speaker_failed_ratio, 4),
+        "intelligibility_failed_ratio": round(intelligibility_failed_ratio, 4),
+        "reasons": reasons,
     }
 
 

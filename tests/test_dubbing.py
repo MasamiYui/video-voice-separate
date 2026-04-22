@@ -35,6 +35,17 @@ class FakeBackend:
         )()
 
 
+class RecordingBackend(FakeBackend):
+    def __init__(self) -> None:
+        self.segment_ids: list[str] = []
+        self.target_texts: list[str] = []
+
+    def synthesize(self, *, reference, segment, output_path):
+        self.segment_ids.append(segment.segment_id)
+        self.target_texts.append(segment.target_text)
+        return super().synthesize(reference=reference, segment=segment, output_path=output_path)
+
+
 def _write_audio(path: Path, duration_sec: float, *, sample_rate: int = 16_000, amplitude: float = 0.05) -> None:
     waveform = amplitude * np.ones(int(duration_sec * sample_rate), dtype=np.float32)
     sf.write(path, waveform, sample_rate)
@@ -521,3 +532,226 @@ def test_synthesize_speaker_retries_second_reference_for_pathological_duration(
     assert segment["reference_path"] == str(good_reference.resolve())
     assert segment["attempts"][0]["selected"] is False
     assert segment["attempts"][1]["selected"] is True
+
+
+def test_synthesize_speaker_groups_short_context_as_dubbing_unit(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    reference_clip = tmp_path / "reference.wav"
+    _write_audio(reference_clip, 9.0)
+    translation_path = tmp_path / "translation.en.json"
+    profiles_path = tmp_path / "speaker_profiles.json"
+    translation_path.write_text(
+        json.dumps(
+            {
+                "backend": {"target_lang": "en", "output_tag": "en"},
+                "segments": [
+                    {
+                        "segment_id": "seg-0001",
+                        "speaker_id": "spk_0000",
+                        "speaker_label": "SPEAKER_00",
+                        "start": 0.0,
+                        "end": 0.8,
+                        "duration": 0.8,
+                        "target_text": "Ne Zha.",
+                        "dubbing_text": "Ne Zha.",
+                        "duration_budget": {"estimated_target_sec": 0.7},
+                        "qa_flags": ["too_short_source"],
+                        "script_risk_flags": ["needs_dubbing_unit"],
+                        "context_unit_id": "unit-0001",
+                    },
+                    {
+                        "segment_id": "seg-0002",
+                        "speaker_id": "spk_0000",
+                        "speaker_label": "SPEAKER_00",
+                        "start": 0.9,
+                        "end": 2.0,
+                        "duration": 1.1,
+                        "target_text": "Come back.",
+                        "dubbing_text": "Come back.",
+                        "duration_budget": {"estimated_target_sec": 0.9},
+                        "qa_flags": [],
+                        "script_risk_flags": [],
+                        "context_unit_id": "unit-0001",
+                    },
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    profiles_path.write_text(
+        json.dumps(
+            {
+                "profiles": [
+                    {
+                        "profile_id": "profile_0000",
+                        "speaker_id": "spk_0000",
+                        "reference_clips": [
+                            {
+                                "path": str(reference_clip),
+                                "text": "这是声音参考文本",
+                                "duration": 9.0,
+                                "rms": 0.05,
+                            }
+                        ],
+                    }
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        "translip.dubbing.runner.evaluate_segment",
+        lambda **_: type(
+            "Eval",
+            (),
+            {
+                "speaker_similarity": 0.61,
+                "speaker_status": "passed",
+                "backread_text": "ne zha come back",
+                "text_similarity": 0.96,
+                "intelligibility_status": "passed",
+                "duration_ratio": 1.0,
+                "duration_status": "passed",
+                "overall_status": "passed",
+            },
+        )(),
+    )
+
+    backend = RecordingBackend()
+    result = synthesize_speaker(
+        DubbingRequest(
+            translation_path=translation_path,
+            profiles_path=profiles_path,
+            output_dir=tmp_path / "output",
+            speaker_id="spk_0000",
+        ),
+        backend_override=backend,
+    )
+
+    report = json.loads(result.artifacts.report_path.read_text(encoding="utf-8"))
+    assert backend.segment_ids == ["unit-0001"]
+    assert backend.target_texts == ["Ne Zha. Come back."]
+    assert [row["synthesis_mode"] for row in report["segments"]] == ["dubbing_unit", "dubbing_unit"]
+    assert report["segments"][0]["dubbing_unit_segment_ids"] == ["seg-0001", "seg-0002"]
+    assert Path(report["segments"][0]["audio_path"]).exists()
+    assert Path(report["segments"][1]["audio_path"]).exists()
+
+
+def test_synthesize_speaker_prefers_voice_bank_references(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    profile_reference = tmp_path / "profile_reference.wav"
+    bank_reference = tmp_path / "bank_reference.wav"
+    _write_audio(profile_reference, 9.0)
+    _write_audio(bank_reference, 8.5)
+    translation_path = tmp_path / "translation.en.json"
+    profiles_path = tmp_path / "speaker_profiles.json"
+    voice_bank_path = tmp_path / "voice_bank.en.json"
+    translation_path.write_text(
+        json.dumps(
+            {
+                "backend": {"target_lang": "en", "output_tag": "en"},
+                "segments": [
+                    {
+                        "segment_id": "seg-0001",
+                        "speaker_id": "spk_0000",
+                        "speaker_label": "SPEAKER_00",
+                        "start": 0.0,
+                        "duration": 1.0,
+                        "target_text": "Hello.",
+                        "dubbing_text": "Hello.",
+                        "duration_budget": {"estimated_target_sec": 0.8},
+                        "qa_flags": [],
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    profiles_path.write_text(
+        json.dumps(
+            {
+                "profiles": [
+                    {
+                        "profile_id": "profile_0000",
+                        "speaker_id": "spk_0000",
+                        "reference_clips": [
+                            {
+                                "path": str(profile_reference),
+                                "text": "这是普通参考文本",
+                                "duration": 9.0,
+                                "rms": 0.05,
+                            }
+                        ],
+                    }
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    voice_bank_path.write_text(
+        json.dumps(
+            {
+                "speakers": [
+                    {
+                        "speaker_id": "spk_0000",
+                        "profile_id": "profile_0000",
+                        "references": [
+                            {
+                                "reference_id": "bank-ref",
+                                "type": "source_clip",
+                                "audio_path": str(bank_reference),
+                                "text": "这是更好的参考文本",
+                                "duration_sec": 8.5,
+                                "rms": 0.05,
+                                "quality_score": 0.95,
+                                "risk_flags": [],
+                            }
+                        ],
+                    }
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        "translip.dubbing.runner.evaluate_segment",
+        lambda **_: type(
+            "Eval",
+            (),
+            {
+                "speaker_similarity": 0.70,
+                "speaker_status": "passed",
+                "backread_text": "hello",
+                "text_similarity": 1.0,
+                "intelligibility_status": "passed",
+                "duration_ratio": 1.0,
+                "duration_status": "passed",
+                "overall_status": "passed",
+            },
+        )(),
+    )
+
+    result = synthesize_speaker(
+        DubbingRequest(
+            translation_path=translation_path,
+            profiles_path=profiles_path,
+            voice_bank_path=voice_bank_path,
+            output_dir=tmp_path / "output",
+            speaker_id="spk_0000",
+        ),
+        backend_override=FakeBackend(),
+    )
+
+    report = json.loads(result.artifacts.report_path.read_text(encoding="utf-8"))
+    assert report["segments"][0]["reference_path"] == str(bank_reference.resolve())

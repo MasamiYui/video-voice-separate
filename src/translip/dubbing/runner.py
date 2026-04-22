@@ -7,6 +7,9 @@ import time
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+import soundfile as sf
+
 from ..exceptions import TranslipError
 from ..types import DubbingArtifacts, DubbingRequest, DubbingResult
 from ..utils.files import ensure_directory, remove_tree, work_directory
@@ -19,6 +22,7 @@ from .reference import (
     load_profiles_payload,
     prepare_reference_package,
     select_reference_candidates,
+    select_voice_bank_reference_candidates,
 )
 
 logger = logging.getLogger(__name__)
@@ -50,71 +54,92 @@ def synthesize_speaker(
     try:
         segments = _filtered_segments(translation_payload, normalized_request)
         backend = backend_override if backend_override is not None else _build_backend(normalized_request)
-        reference_candidates = select_reference_candidates(
+        reference_candidates = _select_reference_candidates(
             profiles_payload=profiles_payload,
             speaker_id=normalized_request.speaker_id,
             reference_clip_path=normalized_request.reference_clip_path,
+            voice_bank_path=normalized_request.voice_bank_path,
         )
         succeeded_audio_paths: list[Path] = []
         report_segments: list[dict[str, Any]] = []
         prepared_references: dict[Path, ReferencePackage] = {}
 
-        for index, segment_row in enumerate(segments, start=1):
-            segment = SynthSegmentInput(
-                segment_id=str(segment_row["segment_id"]),
-                speaker_id=normalized_request.speaker_id,
-                target_lang=target_lang,
-                target_text=str(segment_row["target_text"]).strip(),
-                source_duration_sec=float(segment_row["duration"]),
-                duration_budget_sec=float(
-                    segment_row["duration_budget"].get("estimated_target_sec")
-                    or segment_row["duration_budget"].get("estimated_tts_duration_sec")
-                    or 0.0
-                ),
-                qa_flags=[str(flag) for flag in segment_row.get("qa_flags", [])],
-                metadata={"context_unit_id": segment_row.get("context_unit_id")},
-            )
-            output_path = bundle_dir / "segments" / f"{segment.segment_id}.wav"
-            synth_output, selected_reference, evaluation, attempt_summary = _synthesize_with_quality_retry(
-                backend=backend,
-                segment=segment,
-                output_path=output_path,
-                reference_candidates=reference_candidates[:2],
-                prepared_references=prepared_references,
-                work_dir=work_dir,
-                request=normalized_request,
-                target_lang=target_lang,
-            )
-            succeeded_audio_paths.append(synth_output.audio_path)
-            report_segments.append(
-                {
-                    "segment_id": segment.segment_id,
-                    "speaker_id": normalized_request.speaker_id,
-                    "target_text": segment.target_text,
-                    "source_duration_sec": round(segment.source_duration_sec, 3),
-                    "generated_duration_sec": round(synth_output.generated_duration_sec, 3),
-                    "duration_ratio": round(evaluation.duration_ratio, 3),
-                    "duration_status": evaluation.duration_status,
-                    "speaker_similarity": (
-                        round(evaluation.speaker_similarity, 4)
-                        if evaluation.speaker_similarity is not None
-                        else None
-                    ),
-                    "speaker_status": evaluation.speaker_status,
-                    "backread_text": evaluation.backread_text,
-                    "text_similarity": round(evaluation.text_similarity, 4),
-                    "intelligibility_status": evaluation.intelligibility_status,
-                    "overall_status": evaluation.overall_status,
-                    "qa_flags": segment.qa_flags,
-                    "reference_path": str(selected_reference.original_audio_path),
-                    "audio_path": str(synth_output.audio_path),
-                    "attempt_count": attempt_summary["attempt_count"],
-                    "selected_attempt_index": attempt_summary["selected_attempt_index"],
-                    "quality_retry_reasons": attempt_summary["quality_retry_reasons"],
-                    "attempts": attempt_summary["attempts"],
-                    "index": index,
-                }
-            )
+        for group in _synthesis_groups(segments):
+            if len(group) == 1:
+                segment_row = group[0]
+                segment = _segment_input_from_row(
+                    segment_row,
+                    speaker_id=normalized_request.speaker_id,
+                    target_lang=target_lang,
+                )
+                output_path = bundle_dir / "segments" / f"{segment.segment_id}.wav"
+                synth_output, selected_reference, evaluation, attempt_summary = _synthesize_with_quality_retry(
+                    backend=backend,
+                    segment=segment,
+                    output_path=output_path,
+                    reference_candidates=reference_candidates[:3],
+                    prepared_references=prepared_references,
+                    work_dir=work_dir,
+                    request=normalized_request,
+                    target_lang=target_lang,
+                )
+                succeeded_audio_paths.append(synth_output.audio_path)
+                report_segments.append(
+                    _segment_report_row(
+                        segment_row=segment_row,
+                        segment=segment,
+                        synth_output=synth_output,
+                        selected_reference=selected_reference,
+                        evaluation=evaluation,
+                        attempt_summary=attempt_summary,
+                        index=len(report_segments) + 1,
+                        synthesis_mode="segment",
+                    )
+                )
+            else:
+                unit_rows = group
+                unit_segment = _unit_input_from_rows(
+                    unit_rows,
+                    speaker_id=normalized_request.speaker_id,
+                    target_lang=target_lang,
+                )
+                unit_output_path = bundle_dir / "units" / f"{unit_segment.segment_id}.wav"
+                synth_output, selected_reference, evaluation, attempt_summary = _synthesize_with_quality_retry(
+                    backend=backend,
+                    segment=unit_segment,
+                    output_path=unit_output_path,
+                    reference_candidates=reference_candidates[:3],
+                    prepared_references=prepared_references,
+                    work_dir=work_dir,
+                    request=normalized_request,
+                    target_lang=target_lang,
+                )
+                split_outputs = _split_unit_audio(
+                    unit_audio_path=synth_output.audio_path,
+                    segment_rows=unit_rows,
+                    output_dir=bundle_dir / "segments",
+                )
+                for segment_row, split_output in zip(unit_rows, split_outputs, strict=True):
+                    segment = _segment_input_from_row(
+                        segment_row,
+                        speaker_id=normalized_request.speaker_id,
+                        target_lang=target_lang,
+                    )
+                    succeeded_audio_paths.append(split_output.audio_path)
+                    report_segments.append(
+                        _segment_report_row(
+                            segment_row=segment_row,
+                            segment=segment,
+                            synth_output=split_output,
+                            selected_reference=selected_reference,
+                            evaluation=evaluation,
+                            attempt_summary=attempt_summary,
+                            index=len(report_segments) + 1,
+                            synthesis_mode="dubbing_unit",
+                            unit_segment=unit_segment,
+                            unit_audio_path=synth_output.audio_path,
+                        )
+                    )
             partial_report = build_dubbing_report(
                 request=normalized_request,
                 target_lang=target_lang,
@@ -239,6 +264,296 @@ def _filtered_segments(
     if not rows:
         raise TranslipError(f"No translation segments found for speaker {request.speaker_id}")
     return rows
+
+
+def _segment_input_from_row(
+    segment_row: dict[str, Any],
+    *,
+    speaker_id: str,
+    target_lang: str,
+) -> SynthSegmentInput:
+    return SynthSegmentInput(
+        segment_id=str(segment_row["segment_id"]),
+        speaker_id=speaker_id,
+        target_lang=target_lang,
+        target_text=str(segment_row.get("dubbing_text") or segment_row["target_text"]).strip(),
+        source_duration_sec=float(segment_row["duration"]),
+        duration_budget_sec=float(
+            segment_row.get("duration_budget", {}).get("estimated_target_sec")
+            or segment_row.get("duration_budget", {}).get("estimated_tts_duration_sec")
+            or 0.0
+        ),
+        qa_flags=[str(flag) for flag in segment_row.get("qa_flags", [])],
+        metadata={"context_unit_id": segment_row.get("context_unit_id")},
+    )
+
+
+def _unit_input_from_rows(
+    segment_rows: list[dict[str, Any]],
+    *,
+    speaker_id: str,
+    target_lang: str,
+) -> SynthSegmentInput:
+    first = segment_rows[0]
+    last = segment_rows[-1]
+    unit_id = str(first.get("context_unit_id") or f"unit-{first.get('segment_id')}")
+    target_text = _join_dubbing_text(segment_rows)
+    source_duration_sec = max(
+        sum(float(row.get("duration") or 0.0) for row in segment_rows),
+        float(last.get("end") or 0.0) - float(first.get("start") or 0.0),
+    )
+    duration_budget_sec = sum(
+        float(
+            row.get("duration_budget", {}).get("estimated_target_sec")
+            or row.get("duration_budget", {}).get("estimated_tts_duration_sec")
+            or 0.0
+        )
+        for row in segment_rows
+    )
+    qa_flags = _dedupe(
+        [
+            str(flag)
+            for row in segment_rows
+            for flag in row.get("qa_flags", [])
+        ]
+        + ["dubbing_unit"]
+    )
+    return SynthSegmentInput(
+        segment_id=_safe_audio_id(unit_id),
+        speaker_id=speaker_id,
+        target_lang=target_lang,
+        target_text=target_text,
+        source_duration_sec=source_duration_sec,
+        duration_budget_sec=duration_budget_sec,
+        qa_flags=qa_flags,
+        metadata={
+            "context_unit_id": first.get("context_unit_id"),
+            "segment_ids": [str(row.get("segment_id")) for row in segment_rows],
+            "synthesis_mode": "dubbing_unit",
+        },
+    )
+
+
+def _synthesis_groups(segments: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
+    groups: list[list[dict[str, Any]]] = []
+    pending: list[dict[str, Any]] = []
+    pending_context: str | None = None
+
+    def flush() -> None:
+        nonlocal pending, pending_context
+        if not pending:
+            return
+        if _should_synthesize_as_unit(pending):
+            groups.append(list(pending))
+        else:
+            groups.extend([[row] for row in pending])
+        pending = []
+        pending_context = None
+
+    for row in segments:
+        context_id = str(row.get("context_unit_id") or "")
+        if not context_id:
+            flush()
+            groups.append([row])
+            continue
+        if pending and context_id != pending_context:
+            flush()
+        pending.append(row)
+        pending_context = context_id
+    flush()
+    return groups
+
+
+def _should_synthesize_as_unit(rows: list[dict[str, Any]]) -> bool:
+    if len(rows) < 2 or len(rows) > 4:
+        return False
+    first_start = float(rows[0].get("start") or 0.0)
+    last_end = float(rows[-1].get("end") or first_start)
+    if last_end - first_start > 8.0:
+        return False
+    return any(_row_needs_dubbing_unit(row) for row in rows)
+
+
+def _row_needs_dubbing_unit(row: dict[str, Any]) -> bool:
+    flags = {str(flag) for flag in row.get("qa_flags", [])}
+    script_flags = {str(flag) for flag in row.get("script_risk_flags", [])}
+    return bool({"too_short_source"} & flags or {"needs_dubbing_unit", "target_fragment"} & script_flags)
+
+
+def _split_unit_audio(
+    *,
+    unit_audio_path: Path,
+    segment_rows: list[dict[str, Any]],
+    output_dir: Path,
+) -> list[SynthSegmentOutput]:
+    waveform, sample_rate = sf.read(unit_audio_path, dtype="float32", always_2d=False)
+    if waveform.ndim == 2:
+        waveform = waveform.mean(axis=1)
+    waveform = waveform.astype(np.float32)
+    total_samples = int(waveform.size)
+    durations = [max(0.001, float(row.get("duration") or 0.0)) for row in segment_rows]
+    total_duration = sum(durations)
+    outputs: list[SynthSegmentOutput] = []
+    cursor = 0
+    for index, (row, duration) in enumerate(zip(segment_rows, durations, strict=True)):
+        if index == len(segment_rows) - 1:
+            end = total_samples
+        else:
+            end = min(total_samples, cursor + int(round(total_samples * (duration / max(total_duration, 0.001)))))
+        if end <= cursor:
+            end = min(total_samples, cursor + 1)
+        piece = waveform[cursor:end].astype(np.float32)
+        cursor = end
+        output_path = output_dir / f"{row['segment_id']}.wav"
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        sf.write(output_path, piece, sample_rate)
+        outputs.append(
+            SynthSegmentOutput(
+                segment_id=str(row["segment_id"]),
+                audio_path=output_path,
+                sample_rate=int(sample_rate),
+                generated_duration_sec=float(piece.size / sample_rate) if sample_rate else 0.0,
+                backend_metadata={"unit_audio_path": str(unit_audio_path)},
+            )
+        )
+    return outputs
+
+
+def _segment_report_row(
+    *,
+    segment_row: dict[str, Any],
+    segment: SynthSegmentInput,
+    synth_output: SynthSegmentOutput,
+    selected_reference: ReferencePackage,
+    evaluation: object,
+    attempt_summary: dict[str, Any],
+    index: int,
+    synthesis_mode: str,
+    unit_segment: SynthSegmentInput | None = None,
+    unit_audio_path: Path | None = None,
+) -> dict[str, Any]:
+    duration_ratio = (
+        float(synth_output.generated_duration_sec) / max(float(segment.source_duration_sec), 0.001)
+    )
+    duration_status = (
+        _duration_status_from_ratio(duration_ratio)
+        if synthesis_mode == "dubbing_unit"
+        else str(getattr(evaluation, "duration_status", ""))
+    )
+    speaker_status = str(getattr(evaluation, "speaker_status", ""))
+    intelligibility_status = str(getattr(evaluation, "intelligibility_status", ""))
+    overall_status = (
+        _overall_status_from_parts(
+            duration_status=duration_status,
+            speaker_status=speaker_status,
+            intelligibility_status=intelligibility_status,
+        )
+        if synthesis_mode == "dubbing_unit"
+        else str(getattr(evaluation, "overall_status", ""))
+    )
+    row = {
+        "segment_id": segment.segment_id,
+        "speaker_id": segment.speaker_id,
+        "target_text": str(segment_row.get("target_text") or segment.target_text),
+        "dubbing_text": segment.target_text,
+        "source_duration_sec": round(segment.source_duration_sec, 3),
+        "generated_duration_sec": round(synth_output.generated_duration_sec, 3),
+        "duration_ratio": round(duration_ratio, 3),
+        "duration_status": duration_status,
+        "speaker_similarity": (
+            round(float(getattr(evaluation, "speaker_similarity")), 4)
+            if getattr(evaluation, "speaker_similarity", None) is not None
+            else None
+        ),
+        "speaker_status": speaker_status,
+        "backread_text": str(getattr(evaluation, "backread_text", "")),
+        "text_similarity": round(float(getattr(evaluation, "text_similarity", 0.0) or 0.0), 4),
+        "intelligibility_status": intelligibility_status,
+        "overall_status": overall_status,
+        "qa_flags": segment.qa_flags,
+        "reference_path": str(selected_reference.original_audio_path),
+        "audio_path": str(synth_output.audio_path),
+        "attempt_count": attempt_summary["attempt_count"],
+        "selected_attempt_index": attempt_summary["selected_attempt_index"],
+        "quality_retry_reasons": attempt_summary["quality_retry_reasons"],
+        "attempts": attempt_summary["attempts"],
+        "index": index,
+        "synthesis_mode": synthesis_mode,
+    }
+    if unit_segment is not None:
+        row["dubbing_unit_id"] = unit_segment.segment_id
+        row["dubbing_unit_text"] = unit_segment.target_text
+        row["dubbing_unit_segment_ids"] = list(unit_segment.metadata.get("segment_ids", []))
+        row["dubbing_unit_audio_path"] = str(unit_audio_path) if unit_audio_path else None
+    return row
+
+
+def _join_dubbing_text(rows: list[dict[str, Any]]) -> str:
+    return " ".join(str(row.get("dubbing_text") or row.get("target_text") or "").strip() for row in rows).strip()
+
+
+def _safe_audio_id(value: str) -> str:
+    return "".join(char if char.isalnum() or char in {"-", "_"} else "_" for char in value) or "unit"
+
+
+def _duration_status_from_ratio(duration_ratio: float) -> str:
+    if 0.7 <= duration_ratio <= 1.35:
+        return "passed"
+    if 0.55 <= duration_ratio <= 1.65:
+        return "review"
+    return "failed"
+
+
+def _overall_status_from_parts(
+    *,
+    duration_status: str,
+    speaker_status: str,
+    intelligibility_status: str,
+) -> str:
+    statuses = {duration_status, speaker_status, intelligibility_status}
+    if "failed" in statuses:
+        return "failed"
+    if "review" in statuses:
+        return "review"
+    return "passed"
+
+
+def _dedupe(values: list[str]) -> list[str]:
+    result: list[str] = []
+    for value in values:
+        if value not in result:
+            result.append(value)
+    return result
+
+
+def _select_reference_candidates(
+    *,
+    profiles_payload: dict[str, Any],
+    speaker_id: str,
+    reference_clip_path: Path | None,
+    voice_bank_path: Path | None,
+) -> list[object]:
+    if reference_clip_path is not None:
+        return select_reference_candidates(
+            profiles_payload=profiles_payload,
+            speaker_id=speaker_id,
+            reference_clip_path=reference_clip_path,
+        )
+    if voice_bank_path is not None and Path(voice_bank_path).exists():
+        try:
+            voice_bank_payload = json.loads(Path(voice_bank_path).read_text(encoding="utf-8"))
+            candidates = select_voice_bank_reference_candidates(
+                voice_bank_payload=voice_bank_payload,
+                speaker_id=speaker_id,
+            )
+            if candidates:
+                return candidates
+        except Exception as exc:
+            logger.warning("Failed to load voice bank reference candidates from %s: %s", voice_bank_path, exc)
+    return select_reference_candidates(
+        profiles_payload=profiles_payload,
+        speaker_id=speaker_id,
+    )
 
 
 def _synthesize_with_quality_retry(
@@ -374,6 +689,10 @@ def _quality_retry_reasons(evaluation: object) -> list[str]:
         reasons.append("pathological_duration")
     if getattr(evaluation, "intelligibility_status", "") == "failed" and text_similarity < 0.6:
         reasons.append("poor_backread")
+    speaker_similarity = getattr(evaluation, "speaker_similarity", None)
+    if getattr(evaluation, "speaker_status", "") == "failed":
+        if speaker_similarity is None or float(speaker_similarity) < 0.35:
+            reasons.append("poor_speaker_match")
     return reasons
 
 
@@ -381,13 +700,13 @@ def _attempt_score(evaluation: object) -> float:
     overall = _status_score(str(getattr(evaluation, "overall_status", ""))) * 100.0
     duration = _status_score(str(getattr(evaluation, "duration_status", ""))) * 24.0
     intelligibility = _status_score(str(getattr(evaluation, "intelligibility_status", ""))) * 18.0
-    speaker = _status_score(str(getattr(evaluation, "speaker_status", ""))) * 10.0
+    speaker = _status_score(str(getattr(evaluation, "speaker_status", ""))) * 24.0
     duration_ratio = float(getattr(evaluation, "duration_ratio", 0.0) or 0.0)
     duration_proximity = max(0.0, 1.0 - abs(1.0 - duration_ratio))
     text = float(getattr(evaluation, "text_similarity", 0.0) or 0.0)
     speaker_similarity = getattr(evaluation, "speaker_similarity", None)
     speaker_score = float(speaker_similarity) if speaker_similarity is not None else 0.0
-    return overall + duration + intelligibility + speaker + duration_proximity + text + speaker_score
+    return overall + duration + intelligibility + speaker + duration_proximity + text + (speaker_score * 8.0)
 
 
 def _status_score(status: str) -> float:

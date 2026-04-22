@@ -57,6 +57,7 @@ def build_dubbing_report(
         "input": {
             "translation_path": str(request.translation_path),
             "profiles_path": str(request.profiles_path),
+            "voice_bank_path": str(request.voice_bank_path) if request.voice_bank_path else None,
         },
         "backend": {
             "tts_backend": backend_name,
@@ -93,6 +94,7 @@ def build_dubbing_manifest(
             "translation_path": str(request.translation_path),
             "profiles_path": str(request.profiles_path),
             "reference_clip_path": str(request.reference_clip_path) if request.reference_clip_path else None,
+            "voice_bank_path": str(request.voice_bank_path) if request.voice_bank_path else None,
         },
         "request": {
             "speaker_id": request.speaker_id,

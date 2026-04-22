@@ -17,6 +17,52 @@ class GlossaryEntry:
     normalized_source: str | None = None
 
 
+BUILTIN_DUBBING_GLOSSARY: tuple[GlossaryEntry, ...] = (
+    GlossaryEntry(
+        entry_id="builtin-ne-zha",
+        source_variants=("哪吒", "吒儿"),
+        targets={"en": "Ne Zha"},
+        normalized_source="哪吒",
+    ),
+    GlossaryEntry(
+        entry_id="builtin-ao-bing",
+        source_variants=("敖丙",),
+        targets={"en": "Ao Bing"},
+        normalized_source="敖丙",
+    ),
+    GlossaryEntry(
+        entry_id="builtin-chentang-pass",
+        source_variants=("陈塘关",),
+        targets={"en": "Chentang Pass"},
+        normalized_source="陈塘关",
+    ),
+    GlossaryEntry(
+        entry_id="builtin-shen-gongbao",
+        source_variants=("申公豹",),
+        targets={"en": "Shen Gongbao"},
+        normalized_source="申公豹",
+    ),
+    GlossaryEntry(
+        entry_id="builtin-east-sea-dragon-clan",
+        source_variants=("东海龙族", "龙族"),
+        targets={"en": "East Sea Dragon Clan"},
+        normalized_source="东海龙族",
+    ),
+    GlossaryEntry(
+        entry_id="builtin-heavenly-tribulation",
+        source_variants=("天劫",),
+        targets={"en": "Heavenly Tribulation"},
+        normalized_source="天劫",
+    ),
+    GlossaryEntry(
+        entry_id="builtin-dubai",
+        source_variants=("迪拜",),
+        targets={"en": "Dubai"},
+        normalized_source="迪拜",
+    ),
+)
+
+
 def load_glossary(glossary_path: Path | None) -> list[GlossaryEntry]:
     if glossary_path is None:
         return []
@@ -38,6 +84,39 @@ def load_glossary(glossary_path: Path | None) -> list[GlossaryEntry]:
             )
         )
     return glossary
+
+
+def built_in_dubbing_glossary(*, source_lang: str, target_lang: str) -> list[GlossaryEntry]:
+    if canonical_language_code(source_lang) != "zh" or canonical_language_code(target_lang) != "en":
+        return []
+    return list(BUILTIN_DUBBING_GLOSSARY)
+
+
+def merge_glossaries(
+    *,
+    user_glossary: list[GlossaryEntry],
+    built_in_glossary: list[GlossaryEntry],
+) -> list[GlossaryEntry]:
+    if not built_in_glossary:
+        return list(user_glossary)
+    user_ids = {entry.entry_id for entry in user_glossary}
+    user_sources = {
+        _normalize_source_for_term_check(variant)
+        for entry in user_glossary
+        for variant in entry.source_variants
+    }
+    merged = list(user_glossary)
+    for entry in built_in_glossary:
+        if entry.entry_id in user_ids:
+            continue
+        normalized_sources = {
+            _normalize_source_for_term_check(variant)
+            for variant in entry.source_variants
+        }
+        if normalized_sources & user_sources:
+            continue
+        merged.append(entry)
+    return merged
 
 
 def apply_glossary(

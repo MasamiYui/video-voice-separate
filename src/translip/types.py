@@ -355,6 +355,7 @@ class DubbingRequest:
     backend: TtsBackendName = "moss-tts-nano-onnx"
     device: Device = "auto"
     reference_clip_path: Path | str | None = None
+    voice_bank_path: Path | str | None = None
     segment_ids: list[str] | None = None
     max_segments: int | None = None
     keep_intermediate: bool = False
@@ -371,6 +372,11 @@ class DubbingRequest:
             reference_clip_path=(
                 Path(self.reference_clip_path).expanduser().resolve()
                 if self.reference_clip_path is not None
+                else None
+            ),
+            voice_bank_path=(
+                Path(self.voice_bank_path).expanduser().resolve()
+                if self.voice_bank_path is not None
                 else None
             ),
             segment_ids=list(self.segment_ids) if self.segment_ids else None,

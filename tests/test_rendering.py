@@ -263,6 +263,8 @@ def test_render_dub_writes_outputs_and_places_failed_segments_when_audio_exists(
     assert mix_report["stats"]["quality_summary"]["failure_reason_counts"] == {
         "duration+intelligibility": 1,
     }
+    assert mix_report["stats"]["content_quality"]["status"] == "blocked"
+    assert "upstream_failed_segments" in mix_report["stats"]["content_quality"]["reasons"]
 
     item_by_id = {item["segment_id"]: item for item in timeline["items"]}
     assert item_by_id["seg-0001"]["mix_status"] == "placed"

@@ -116,6 +116,32 @@ def test_cli_build_speaker_registry_parser() -> None:
     assert args.update_registry is True
 
 
+def test_cli_build_voice_bank_parser() -> None:
+    parser = build_parser()
+    args = parser.parse_args(
+        [
+            "build-voice-bank",
+            "--profiles",
+            "speaker_profiles.json",
+            "--output-dir",
+            "task-b/voice",
+            "--task-d-report",
+            "task-d/voice/spk_0000/speaker_segments.en.json",
+            "--target-lang",
+            "en",
+            "--max-references-per-speaker",
+            "5",
+            "--no-composite",
+        ]
+    )
+    assert args.command == "build-voice-bank"
+    assert args.profiles == "speaker_profiles.json"
+    assert args.output_dir == "task-b/voice"
+    assert args.task_d_reports == ["task-d/voice/spk_0000/speaker_segments.en.json"]
+    assert args.max_references_per_speaker == 5
+    assert args.no_composite is True
+
+
 def test_cli_main_build_speaker_registry_command(monkeypatch, capsys) -> None:
     captured: dict[str, object] = {}
 
@@ -206,6 +232,8 @@ def test_cli_synthesize_speaker_parser() -> None:
             "spk_0000",
             "--backend",
             "qwen3tts",
+            "--voice-bank",
+            "voice_bank.en.json",
             "--segment-id",
             "seg-0001",
             "--segment-id",
@@ -219,6 +247,7 @@ def test_cli_synthesize_speaker_parser() -> None:
     assert args.profiles == "speaker_profiles.json"
     assert args.speaker_id == "spk_0000"
     assert args.backend == "qwen3tts"
+    assert args.voice_bank == "voice_bank.en.json"
     assert args.segment_ids == ["seg-0001", "seg-0002"]
     assert args.max_segments == 2
 
