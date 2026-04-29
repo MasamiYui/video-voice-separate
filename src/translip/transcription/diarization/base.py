@@ -40,10 +40,6 @@ class DiarizationBackend(ABC):
     name: str = "abstract"
 
     @abstractmethod
-    def is_available(self) -> bool:
-        """Return True if runtime prerequisites (models, deps) are satisfied."""
-
-    @abstractmethod
     def diarize(
         self,
         audio_path: Path,

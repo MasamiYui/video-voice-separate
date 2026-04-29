@@ -15,6 +15,17 @@ def segments_payload(
     segments: list[TranscriptionSegment],
     metadata: dict[str, Any],
 ) -> dict[str, Any]:
+    stats: dict[str, Any] = {
+        "segment_count": len(segments),
+        "speaker_count": len({segment.speaker_label for segment in segments}),
+    }
+    for key, value in metadata.items():
+        if not isinstance(key, str):
+            continue
+        if not key.startswith("diarization_"):
+            continue
+        if isinstance(value, (int, float, str, bool)):
+            stats[key] = value
     return {
         "input": {
             "path": str(request.input_path),
@@ -29,12 +40,10 @@ def segments_payload(
             "asr_device": metadata.get("asr_device"),
             "speaker_backend": metadata.get("speaker_backend"),
             "speaker_device": metadata.get("speaker_device"),
+            "diarization_backend": metadata.get("diarization_backend"),
             "detected_language": metadata.get("detected_language"),
         },
-        "stats": {
-            "segment_count": len(segments),
-            "speaker_count": len({segment.speaker_label for segment in segments}),
-        },
+        "stats": stats,
         "segments": [
             {
                 "id": segment.segment_id,
