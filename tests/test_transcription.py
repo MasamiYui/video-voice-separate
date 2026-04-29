@@ -8,7 +8,11 @@ from translip.transcription.export import (
 )
 from translip.transcription.speaker import _stable_relabel
 from translip.types import MediaInfo, TranscriptionRequest, TranscriptionSegment
-from translip.transcription.asr import resolve_faster_whisper_model_path
+from translip.transcription.asr import (
+    AsrSegment,
+    merge_adjacent_segments,
+    resolve_faster_whisper_model_path,
+)
 
 
 def test_stable_relabel_preserves_first_seen_order() -> None:
@@ -108,3 +112,62 @@ def test_resolve_faster_whisper_model_path_prefers_complete_local_cache(tmp_path
         (snapshot / filename).write_text("cached", encoding="utf-8")
 
     assert resolve_faster_whisper_model_path("small", cache_dir=hf_cache) == str(snapshot)
+
+
+def _asr(seg_id: str, start: float, end: float, text: str = "hi", lang: str = "zh") -> AsrSegment:
+    return AsrSegment(segment_id=seg_id, start=start, end=end, text=text, language=lang)
+
+
+def test_merge_adjacent_segments_joins_neighbours_under_gap_threshold() -> None:
+    segments = [
+        _asr("seg-0001", 0.0, 1.0, text="你好"),
+        _asr("seg-0002", 1.10, 2.0, text="世界"),
+        _asr("seg-0003", 5.00, 6.0, text="再见"),
+    ]
+    merged, stats = merge_adjacent_segments(segments, max_gap_sec=0.3, max_segment_sec=15.0)
+    assert [s.segment_id for s in merged] == ["seg-0001", "seg-0002"]
+    assert merged[0].text == "你好 世界"
+    assert merged[0].start == 0.0 and merged[0].end == 2.0
+    assert merged[1].text == "再见"
+    assert stats == {
+        "vad_merge_input": 3,
+        "vad_merge_output": 2,
+        "vad_merge_merged_pairs": 1,
+        "vad_merge_max_gap_sec": 0.1,
+    }
+
+
+def test_merge_adjacent_segments_respects_max_segment_duration() -> None:
+    # Even with tiny gaps, the combined span must not exceed the cap.
+    segments = [
+        _asr("seg-0001", 0.0, 8.0),
+        _asr("seg-0002", 8.05, 14.0),
+        _asr("seg-0003", 14.10, 18.0),
+    ]
+    merged, stats = merge_adjacent_segments(segments, max_gap_sec=0.5, max_segment_sec=15.0)
+    # First two merge (span=14s <= 15), third would push span to 18s > 15 -> kept separate.
+    assert len(merged) == 2
+    assert merged[0].end == 14.0
+    assert merged[1].start == 14.10
+    assert stats["vad_merge_merged_pairs"] == 1
+
+
+def test_merge_adjacent_segments_does_not_cross_language_boundary() -> None:
+    segments = [
+        _asr("seg-0001", 0.0, 1.0, text="hello", lang="en"),
+        _asr("seg-0002", 1.05, 2.0, text="你好", lang="zh"),
+    ]
+    merged, stats = merge_adjacent_segments(segments, max_gap_sec=0.3, max_segment_sec=15.0)
+    assert [s.segment_id for s in merged] == ["seg-0001", "seg-0002"]
+    assert stats["vad_merge_merged_pairs"] == 0
+
+
+def test_merge_adjacent_segments_empty_input_returns_zero_stats() -> None:
+    merged, stats = merge_adjacent_segments([])
+    assert merged == []
+    assert stats == {
+        "vad_merge_input": 0,
+        "vad_merge_output": 0,
+        "vad_merge_merged_pairs": 0,
+        "vad_merge_max_gap_sec": 0.0,
+    }

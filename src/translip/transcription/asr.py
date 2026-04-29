@@ -45,9 +45,102 @@ class AsrOptions:
     best_of: int = 5
     temperature: float = 0.0
     condition_on_previous_text: bool = False
+    merge_max_gap_sec: float = 0.30
+    merge_max_segment_sec: float = 15.0
 
     def metadata(self) -> dict[str, bool | int | float]:
         return asdict(self)
+
+
+def merge_adjacent_segments(
+    segments: list[AsrSegment],
+    *,
+    max_gap_sec: float = 0.30,
+    max_segment_sec: float = 15.0,
+) -> tuple[list[AsrSegment], dict[str, int | float]]:
+    """Merge neighbouring ASR segments whose silence gap falls under
+    ``max_gap_sec`` so diarization sees longer, more stable chunks.
+
+    Rules:
+      * Only same-language neighbours are merged (cross-language joins
+        would break downstream translation).
+      * The merged span must not exceed ``max_segment_sec``.
+      * Segment ids are re-issued as ``seg-XXXX`` after the merge to keep
+        the downstream contract (one id per segment, monotonically
+        increasing) intact.
+
+    Returns the merged list alongside a stats dictionary so callers can
+    surface audit metrics (``vad_merge_input``, ``vad_merge_output``,
+    ``vad_merge_merged_pairs``, ``vad_merge_max_gap_sec``).
+    """
+
+    if not segments:
+        return [], {
+            "vad_merge_input": 0,
+            "vad_merge_output": 0,
+            "vad_merge_merged_pairs": 0,
+            "vad_merge_max_gap_sec": 0.0,
+        }
+
+    merged: list[AsrSegment] = []
+    merged_pairs = 0
+    observed_max_gap = 0.0
+
+    current = AsrSegment(
+        segment_id=segments[0].segment_id,
+        start=segments[0].start,
+        end=segments[0].end,
+        text=segments[0].text,
+        language=segments[0].language,
+    )
+
+    for nxt in segments[1:]:
+        gap = max(0.0, float(nxt.start) - float(current.end))
+        combined_duration = float(nxt.end) - float(current.start)
+        can_merge = (
+            nxt.language == current.language
+            and gap <= max_gap_sec
+            and combined_duration <= max_segment_sec
+        )
+        if can_merge:
+            observed_max_gap = max(observed_max_gap, gap)
+            current = AsrSegment(
+                segment_id=current.segment_id,
+                start=current.start,
+                end=float(nxt.end),
+                text=f"{current.text} {nxt.text}".strip(),
+                language=current.language,
+            )
+            merged_pairs += 1
+        else:
+            merged.append(current)
+            current = AsrSegment(
+                segment_id=nxt.segment_id,
+                start=nxt.start,
+                end=nxt.end,
+                text=nxt.text,
+                language=nxt.language,
+            )
+    merged.append(current)
+
+    renumbered: list[AsrSegment] = [
+        AsrSegment(
+            segment_id=f"seg-{index:04d}",
+            start=round(seg.start, 3),
+            end=round(seg.end, 3),
+            text=seg.text,
+            language=seg.language,
+        )
+        for index, seg in enumerate(merged, start=1)
+    ]
+
+    stats: dict[str, int | float] = {
+        "vad_merge_input": len(segments),
+        "vad_merge_output": len(renumbered),
+        "vad_merge_merged_pairs": merged_pairs,
+        "vad_merge_max_gap_sec": round(observed_max_gap, 3),
+    }
+    return renumbered, stats
 
 
 def resolve_asr_device(requested_device: str) -> str:
@@ -153,13 +246,20 @@ def transcribe_audio(
             )
         )
 
+    merged_segments, merge_stats = merge_adjacent_segments(
+        segments,
+        max_gap_sec=resolved_options.merge_max_gap_sec,
+        max_segment_sec=resolved_options.merge_max_segment_sec,
+    )
+
     metadata: dict[str, str | float | int | bool] = {
         "asr_backend": "faster-whisper",
         "asr_model": model_name,
         "asr_model_resolved": resolved_model_path,
         "asr_device": device,
         "detected_language": detected_language,
-        "segment_count": len(segments),
+        "segment_count": len(merged_segments),
         **resolved_options.metadata(),
+        **merge_stats,
     }
-    return segments, metadata
+    return merged_segments, metadata
