@@ -22,7 +22,7 @@ def segments_payload(
     for key, value in metadata.items():
         if not isinstance(key, str):
             continue
-        if not (key.startswith("diarization_") or key.startswith("vad_merge_")):
+        if not key.startswith("diarization_"):
             continue
         if isinstance(value, (int, float, str, bool)):
             stats[key] = value
