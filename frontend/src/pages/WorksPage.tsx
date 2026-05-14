@@ -127,24 +127,29 @@ export function WorksPage() {
   }
 
   const noKeyword = search.trim().length === 0 && typeFilter === TYPE_FILTER_ALL
+  const isLibraryEmpty = works.length === 0 && noKeyword
 
   return (
     <PageContainer className={APP_CONTENT_MAX_WIDTH}>
-      <div className="mb-5 flex flex-wrap items-center gap-3">
+      <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2">
-          <Clapperboard size={18} className="text-[#3b5bdb]" />
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
+          <Clapperboard size={17} className="text-[#3b5bdb]" />
+          <h1 className="text-xl font-semibold tracking-tight text-slate-900">
             {t.worksLibrary.title}
           </h1>
         </div>
-        <span
-          data-testid="works-library-count"
-          className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600"
-        >
-          {t.worksLibrary.countHint(works.length)}
-        </span>
-        <p className="basis-full text-xs text-slate-500">{t.worksLibrary.subtitle}</p>
-        {storagePath && (
+        {!isLibraryEmpty && (
+          <span
+            data-testid="works-library-count"
+            className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600"
+          >
+            {t.worksLibrary.countHint(works.length)}
+          </span>
+        )}
+        {!isLibraryEmpty && (
+          <p className="basis-full text-xs text-slate-500">{t.worksLibrary.subtitle}</p>
+        )}
+        {!isLibraryEmpty && storagePath && (
           <p data-testid="works-library-storage" className="basis-full text-[11px] text-slate-400">
             {t.worksLibrary.storageHint(storagePath)}
           </p>

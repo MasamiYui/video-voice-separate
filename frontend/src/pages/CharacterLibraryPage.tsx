@@ -155,6 +155,7 @@ export function CharacterLibraryPage() {
 
   const personas = useMemo(() => data?.personas ?? [], [data])
   const works: Work[] = useMemo(() => worksData?.works ?? [], [worksData])
+  const storagePath = data?.path ?? ''
   const unassignedCount = useMemo(
     () => worksData?.unassigned_count ?? personas.filter(p => !p.work_id).length,
     [worksData, personas],
@@ -279,44 +280,53 @@ export function CharacterLibraryPage() {
 
   return (
     <PageContainer className={APP_CONTENT_MAX_WIDTH}>
-      <div className="mb-4 flex flex-col gap-3">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2">
-            <BookUser size={17} className="text-[#3b5bdb]" />
-            <h1 className="text-xl font-semibold tracking-tight text-slate-900">
-              {t.characterLibrary.title}
-            </h1>
-          </div>
-          <div
-            data-testid="character-library-toolbar"
-            className="ml-auto flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2"
-          >
-            <div className="relative min-w-[220px] flex-1 sm:max-w-sm">
-              <Search
-                size={14}
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-              />
-              <input
-                data-testid="character-library-search"
-                type="search"
-                value={search}
-                onChange={event => setSearch(event.target.value)}
-                placeholder={t.characterLibrary.placeholders.search}
-                className="w-full rounded-lg border border-[#e5e7eb] bg-white py-2 pl-9 pr-3 text-sm text-[#374151] transition-all focus:border-[#3b5bdb] focus:outline-none focus:ring-2 focus:ring-[#3b5bdb]/20"
-              />
-            </div>
-            <button
-              type="button"
-              data-testid="character-library-create"
-              onClick={openCreate}
-              className="inline-flex items-center gap-2 rounded-lg bg-[#3b5bdb] px-4 py-2 text-sm font-semibold text-white shadow-[0_1px_3px_rgba(59,91,219,.35)] transition-all hover:bg-[#3451c7]"
-            >
-              <PlusCircle size={14} />
-              {t.characterLibrary.actions.create}
-            </button>
-          </div>
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2">
+          <BookUser size={17} className="text-[#3b5bdb]" />
+          <h1 className="text-xl font-semibold tracking-tight text-slate-900">
+            {t.characterLibrary.title}
+          </h1>
         </div>
-        <div data-testid="character-library-filters" className="flex flex-wrap items-center gap-2">
+        {!isLibraryEmpty && (
+          <span
+            data-testid="character-library-count"
+            className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600"
+          >
+            {t.characterLibrary.countHint(personas.length)}
+          </span>
+        )}
+        {!isLibraryEmpty && (
+          <p className="basis-full text-xs text-slate-500">{t.characterLibrary.subtitle}</p>
+        )}
+        {!isLibraryEmpty && storagePath && (
+          <p
+            data-testid="character-library-storage"
+            className="basis-full text-[11px] text-slate-400"
+          >
+            {t.characterLibrary.storageHint(storagePath)}
+          </p>
+        )}
+      </div>
+
+      <div
+        data-testid="character-library-toolbar"
+        className="mb-4 flex flex-wrap items-center gap-3"
+      >
+        <div className="relative flex-1 min-w-[240px]">
+          <Search
+            size={14}
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+          />
+          <input
+            data-testid="character-library-search"
+            type="search"
+            value={search}
+            onChange={event => setSearch(event.target.value)}
+            placeholder={t.characterLibrary.placeholders.search}
+            className="w-full rounded-lg border border-[#e5e7eb] bg-white py-2 pl-9 pr-3 text-sm text-[#374151] transition-all focus:border-[#3b5bdb] focus:outline-none focus:ring-2 focus:ring-[#3b5bdb]/20"
+          />
+        </div>
+        <div data-testid="character-library-filters">
           <WorksSidebar
             works={works}
             selected={selectedWork}
@@ -326,6 +336,15 @@ export function CharacterLibraryPage() {
             isLoading={isWorksLoading}
           />
         </div>
+        <button
+          type="button"
+          data-testid="character-library-create"
+          onClick={openCreate}
+          className="inline-flex items-center gap-2 rounded-lg bg-[#3b5bdb] px-4 py-2 text-sm font-semibold text-white shadow-[0_1px_3px_rgba(59,91,219,.35)] transition-all hover:bg-[#3451c7]"
+        >
+          <PlusCircle size={14} />
+          {t.characterLibrary.actions.create}
+        </button>
       </div>
 
       {flash && (
