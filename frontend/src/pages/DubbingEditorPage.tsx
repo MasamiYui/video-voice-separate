@@ -682,12 +682,14 @@ function IssueCard({
             : 'hover:bg-slate-50'
       }`}
     >
-      <div className="flex items-start justify-between gap-2">
-        <SeverityBadge severity={issue.severity} />
-        <span className="text-[10px] tabular-nums text-slate-400">{formatTimeSec(issue.time_sec)}</span>
-      </div>
-      <div className="mt-1 line-clamp-1 text-xs font-medium text-slate-900">
-        {resolved ? <s className="text-slate-400">{issue.title}</s> : issue.title}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <SeverityBadge severity={issue.severity} />
+          <span className={`line-clamp-1 text-xs font-medium ${resolved ? 'text-slate-400 line-through' : 'text-slate-900'}`}>
+            {issue.title}
+          </span>
+        </div>
+        <span className="text-[10px] tabular-nums text-slate-400 shrink-0">{formatTimeSec(issue.time_sec)}</span>
       </div>
       <div className="mt-0.5 line-clamp-1 text-[10px] text-slate-400">
         {typeLabel} · {issue.description}
