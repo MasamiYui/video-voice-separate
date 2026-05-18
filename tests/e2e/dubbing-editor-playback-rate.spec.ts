@@ -228,29 +228,30 @@ test.describe('Dubbing editor — A+B playback / synth speed', () => {
     const initialRate = await audio.evaluate(el => (el as HTMLAudioElement).playbackRate)
     expect(initialRate).toBe(1)
 
-    // 1× chip is aria-checked initially.
-    await expect(page.locator('[data-testid="clip-preview-rate-1"]')).toHaveAttribute('aria-checked', 'true')
+    // Wrapper carries the active rate as a data attribute regardless of menu state.
+    await expect(segmented).toHaveAttribute('data-rate', '1')
 
-    // Switch to 1.5×.
-    await page.locator('[data-testid="clip-preview-rate-1.5"]').click()
-    await expect(page.locator('[data-testid="clip-preview-rate-1.5"]')).toHaveAttribute('aria-checked', 'true')
-    await expect(page.locator('[data-testid="clip-preview-rate-1"]')).toHaveAttribute('aria-checked', 'false')
+    // Open the chip popover and pick 1.2×.
+    await segmented.locator('button[aria-haspopup="menu"]').click()
+    await expect(page.locator('[data-testid="clip-preview-rate-1"]')).toHaveAttribute('aria-checked', 'true')
+    await page.locator('[data-testid="clip-preview-rate-1.2"]').click()
+    await expect(segmented).toHaveAttribute('data-rate', '1.2')
 
     // The audio element's runtime playbackRate should follow the segmented control.
     await expect
       .poll(async () => await audio.evaluate(el => (el as HTMLAudioElement).playbackRate), { timeout: 2_000 })
-      .toBe(1.5)
+      .toBe(1.2)
 
-    // localStorage should now hold "1.5".
+    // localStorage should now hold "1.2".
     const stored = await page.evaluate(() => window.localStorage.getItem('dubbingEditor.playbackRate'))
-    expect(stored).toBe('1.5')
+    expect(stored).toBe('1.2')
 
     await page.screenshot({
-      path: path.join(SCREENSHOTS_DIR, 'playback-rate-segmented-1.5x.png'),
+      path: path.join(SCREENSHOTS_DIR, 'playback-rate-segmented-1.2x.png'),
       fullPage: false,
     })
 
-    // Reload — preference should still be 1.5×.
+    // Reload — preference should still be 1.2×.
     await page.reload()
     await page.waitForLoadState('networkidle')
     await page.locator('[data-testid="dubbing-editor"]').waitFor({ timeout: 15_000 })
@@ -262,10 +263,10 @@ test.describe('Dubbing editor — A+B playback / synth speed', () => {
       await page.locator('[data-testid="toggle-issue-queue-panel"]').click()
     }
     await issueItem.click()
-    await expect(page.locator('[data-testid="clip-preview-rate-1.5"]')).toHaveAttribute('aria-checked', 'true')
+    await expect(page.locator('[data-testid="clip-preview-rate"]')).toHaveAttribute('data-rate', '1.2')
     await expect
       .poll(async () => await audio.evaluate(el => (el as HTMLAudioElement).playbackRate), { timeout: 2_000 })
-      .toBe(1.5)
+      .toBe(1.2)
   })
 
   test('B. synth speed segmented forwards `speed` to the resynthesize endpoint', async ({ page }) => {
@@ -297,11 +298,11 @@ test.describe('Dubbing editor — A+B playback / synth speed', () => {
       fullPage: false,
     })
 
-    // Pick a slow setting (0.85×) — sanity check the lower end of the range.
-    await page.locator('[data-testid="resynth-speed-0.85"]').click()
-    await expect(page.locator('[data-testid="resynth-speed-0.85"]')).toHaveAttribute('aria-checked', 'true')
+    // Pick a slow setting (0.9×) — sanity check the lower end of the range.
+    await page.locator('[data-testid="resynth-speed-0.9"]').click()
+    await expect(page.locator('[data-testid="resynth-speed-0.9"]')).toHaveAttribute('aria-checked', 'true')
     await page.locator('[data-testid="resynthesize-btn"]').click()
     await expect.poll(() => synthRequests.length, { timeout: 5_000 }).toBeGreaterThanOrEqual(3)
-    expect(synthRequests[synthRequests.length - 1].speed).toBeCloseTo(0.85, 5)
+    expect(synthRequests[synthRequests.length - 1].speed).toBeCloseTo(0.9, 5)
   })
 })

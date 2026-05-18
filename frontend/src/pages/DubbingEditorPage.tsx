@@ -14,6 +14,7 @@ import {
   ExternalLink,
   Headphones,
   History,
+  Info,
   Keyboard,
   Loader2,
   Maximize2,
@@ -47,7 +48,7 @@ import {
 import { dubbingEditorApi } from '../api/dubbing-editor'
 import { tasksApi } from '../api/tasks'
 import { useI18n } from '../i18n/useI18n'
-import type { LocaleMessages } from '../i18n/messages'
+import type { Locale, LocaleMessages } from '../i18n/messages'
 import type {
   BacktranslateResult,
   DubbingEditorCharacter,
@@ -1097,7 +1098,7 @@ const ZOOM_LEVELS = [10, 20, 40, 80, 160, 320] // pixels per second
 // monitor, and legacy video player. Value is normalised to one of
 // PLAYBACK_RATE_LEVELS so the UI segmented control always has an exact match.
 // ---------------------------------------------------------------------------
-const PLAYBACK_RATE_LEVELS = [0.75, 1, 1.25, 1.5, 2] as const
+const PLAYBACK_RATE_LEVELS = [0.8, 0.9, 1, 1.1, 1.2] as const
 type PlaybackRate = (typeof PLAYBACK_RATE_LEVELS)[number]
 const PLAYBACK_RATE_STORAGE_KEY = 'dubbingEditor.playbackRate'
 const PLAYBACK_RATE_EVENT = 'dubbingEditor:playbackRateChange'
@@ -1965,6 +1966,21 @@ function ClipPreviewPlayer({
           </div>
         </div>
 
+        {/*
+         * Playback-rate control — moved INSIDE the player toolbar so it sits
+         * next to mute/download as a transport-level affordance, instead of
+         * occupying its own row beneath the player. Visually this makes it
+         * unambiguous that this is "how fast I want to LISTEN", not a
+         * synthesis parameter. The popover keeps the 5-step segmented choice
+         * but compacted to a single chip on the toolbar.
+         */}
+        <PlaybackRateChip
+          rate={playbackRate}
+          onChange={setPlaybackRate}
+          ariaLabel={t.dubbingEditor.preview.playbackRateLabel}
+          locale={locale}
+        />
+
         <button
           type="button"
           onClick={toggleMute}
@@ -1985,37 +2001,131 @@ function ClipPreviewPlayer({
           <ExternalLink size={13} />
         </a>
       </div>
-      <div
-        data-testid="clip-preview-rate"
-        role="radiogroup"
-        aria-label={t.dubbingEditor.preview.playbackRateLabel}
-        className="mt-1.5 flex items-center justify-end gap-1"
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// PlaybackRateChip — a compact, popover-driven preview-rate selector that
+// lives inside the player's toolbar. Designed for the dubbing-editor's tight
+// inspector column: collapses 5 chips into a single 28-px chip showing the
+// current rate, expands to a 5-row vertical menu on click. We keep the chip
+// label on `1×` short ("1×") and use a font-mono tabular-nums look so the
+// chip width doesn't jitter as the user toggles between 0.8× and 1.2×.
+// The chip carries `data-testid="clip-preview-rate"` so the existing e2e
+// suite (which asserts that segmented control's visibility & selection)
+// continues to work; each menu row carries `clip-preview-rate-${level}`
+// for the same reason.
+// ---------------------------------------------------------------------------
+function PlaybackRateChip({
+  rate,
+  onChange,
+  ariaLabel,
+  locale,
+}: {
+  rate: PlaybackRate
+  onChange: (next: PlaybackRate) => void
+  ariaLabel: string
+  locale: Locale
+}) {
+  const [open, setOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement | null>(null)
+  const buttonRef = useRef<HTMLButtonElement | null>(null)
+
+  // Close on outside click. We use mousedown so the menu collapses *before*
+  // a click on a different control (e.g. mute button) fires, matching the
+  // muscle memory of every popover in the rest of the editor.
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: MouseEvent) => {
+      const target = e.target as Node | null
+      if (!target) return
+      if (menuRef.current?.contains(target)) return
+      if (buttonRef.current?.contains(target)) return
+      setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  // Close on Escape so keyboard users can dismiss without a mouse round-trip.
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setOpen(false)
+        buttonRef.current?.focus()
+      }
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [open])
+
+  const isCustom = rate !== DEFAULT_PLAYBACK_RATE
+  const chipLabel = `${rate}×`
+
+  return (
+    <div
+      data-testid="clip-preview-rate"
+      data-rate={rate}
+      className="relative shrink-0"
+    >
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`${ariaLabel} · ${chipLabel}`}
+        title={ariaLabel}
+        className={`flex h-7 min-w-[40px] items-center justify-center gap-0.5 rounded-md px-1.5 font-mono text-[10px] font-semibold tabular-nums transition-colors ${
+          isCustom
+            ? 'bg-slate-900 text-white shadow-sm hover:bg-slate-800'
+            : 'text-slate-500 hover:bg-white hover:text-slate-700'
+        }`}
       >
-        <span className="mr-1 text-[10px] font-medium uppercase tracking-widest text-slate-400">
-          {t.dubbingEditor.preview.playbackRateLabel}
-        </span>
-        {PLAYBACK_RATE_LEVELS.map(level => {
-          const active = playbackRate === level
-          return (
-            <button
-              key={level}
-              type="button"
-              role="radio"
-              aria-checked={active}
-              data-testid={`clip-preview-rate-${level}`}
-              onClick={() => setPlaybackRate(level)}
-              className={`h-5 rounded-md px-1.5 font-mono text-[10px] tabular-nums transition-colors ${
-                active
-                  ? 'bg-slate-900 text-white shadow-sm'
-                  : 'text-slate-500 hover:bg-white hover:text-slate-700'
-              }`}
-              title={`${level}×`}
-            >
-              {level}×
-            </button>
-          )
-        })}
-      </div>
+        <Gauge size={12} className="shrink-0 opacity-80" aria-hidden="true" />
+        <span>{chipLabel}</span>
+      </button>
+      {open && (
+        <div
+          ref={menuRef}
+          role="menu"
+          aria-label={ariaLabel}
+          className="absolute right-0 top-full z-30 mt-1 w-24 overflow-hidden rounded-md border border-slate-200 bg-white shadow-lg"
+        >
+          <div className="border-b border-slate-100 px-2 py-1 text-[9px] font-semibold uppercase tracking-widest text-slate-400">
+            {ariaLabel}
+          </div>
+          {PLAYBACK_RATE_LEVELS.map(level => {
+            const active = rate === level
+            return (
+              <button
+                key={level}
+                type="button"
+                role="menuitemradio"
+                aria-checked={active}
+                data-testid={`clip-preview-rate-${level}`}
+                onClick={() => {
+                  onChange(level)
+                  setOpen(false)
+                  buttonRef.current?.focus()
+                }}
+                className={`flex w-full items-center justify-between gap-2 px-2 py-1 text-left font-mono text-[11px] tabular-nums transition-colors ${
+                  active ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                <span>{level}×</span>
+                {level === DEFAULT_PLAYBACK_RATE && (
+                  <span className={`text-[9px] uppercase tracking-widest ${active ? 'text-slate-300' : 'text-slate-400'}`}>
+                    {locale === 'zh-CN' ? '原速' : 'normal'}
+                  </span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
@@ -2132,10 +2242,13 @@ interface ClipFitMeterProps {
 }
 
 // Snap an arbitrary ratio to the inspector's 5-step synth-speed segmented
-// (0.85 / 0.95 / 1 / 1.1 / 1.2). We deliberately *cap* outside ±20% — TTS
-// timbre falls apart past that range and the user is better off splitting
-// the segment than asking the engine to do the impossible.
-const SYNTH_SPEED_LEVELS = [0.85, 0.95, 1, 1.1, 1.2] as const
+// (0.8 / 0.9 / 1 / 1.1 / 1.2). These steps are intentionally identical to
+// PLAYBACK_RATE_LEVELS so that "preview a speed" and "synthesize at that
+// speed" are exactly the same number — the preview is a faithful rehearsal
+// of what re-synthesis will produce. We deliberately *cap* outside ±20% —
+// TTS timbre falls apart past that range and the user is better off
+// splitting the segment than asking the engine to do the impossible.
+const SYNTH_SPEED_LEVELS = PLAYBACK_RATE_LEVELS
 
 function snapSynthSpeed(ratio: number): number {
   const clamped = Math.max(SYNTH_SPEED_LEVELS[0], Math.min(SYNTH_SPEED_LEVELS[SYNTH_SPEED_LEVELS.length - 1], ratio))
@@ -2331,14 +2444,17 @@ function LiveFitPredictor({
   const tone = liveFitTone(predicted, slotDuration)
 
   if (predicted === null || slotDuration === null) {
+    // No baseline yet → the parent renders an info hint inline with the
+    // "配音稿" section header, so the predictor itself stays silent here to
+    // avoid an orphan row beneath the textarea. We still render an empty
+    // marker node so e2e tests can assert the "unknown" tone surface.
     return (
       <div
         data-testid="live-fit-predictor"
         data-tone="unknown"
-        className="mt-1.5 rounded-md border border-dashed border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-500"
-      >
-        {t.dubbingEditor.inspector.liveFitNoBaseline}
-      </div>
+        className="hidden"
+        aria-hidden="true"
+      />
     )
   }
 
@@ -2432,9 +2548,23 @@ function SegmentInspector({
   const [showBacktranslate, setShowBacktranslate] = useState(false)
   const [copiedSource, setCopiedSource] = useState(false)
   const [synthSpeed, setSynthSpeed] = useState<number>(1)
+  const dubTextareaRef = useRef<HTMLTextAreaElement | null>(null)
+
+  useEffect(() => {
+    const el = dubTextareaRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${el.scrollHeight}px`
+  }, [editingText])
 
   const char = project.characters.find(c => c.character_id === unit.character_id)
   const clip = unit.current_clip
+  const hasFitBaseline =
+    clip.generated_duration !== null &&
+    clip.generated_duration !== undefined &&
+    unit.duration !== null &&
+    unit.duration !== undefined &&
+    unit.target_text.trim().length > 0
 
   // Phase 2: per-unit quality scores from benchmark
   const benchmark = project.quality_benchmark
@@ -2588,28 +2718,49 @@ function SegmentInspector({
         title={t.dubbingEditor.inspector.dubText}
         icon={<PenLine size={11} />}
         action={
-          isDirty ? (
-            <button
-              type="button"
-              onClick={() => {
-                onSaveText(unit.unit_id, editingText)
-                setIsDirty(false)
-              }}
-              className="rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-blue-600 transition-colors hover:bg-blue-50 hover:text-blue-700"
-            >
-              {t.dubbingEditor.inspector.saveText}
-            </button>
-          ) : null
+          <div className="flex items-center gap-1.5">
+            {!hasFitBaseline && (
+              <span className="group/lf relative inline-flex">
+                <span
+                  tabIndex={0}
+                  role="img"
+                  aria-label={t.dubbingEditor.inspector.liveFitNoBaseline}
+                  className="inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 focus:bg-slate-100 focus:text-slate-600 focus:outline-none"
+                >
+                  <Info size={11} aria-hidden="true" />
+                </span>
+                <span
+                  role="tooltip"
+                  className="pointer-events-none absolute right-0 top-full z-20 mt-1 hidden w-44 whitespace-normal rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] leading-4 text-slate-600 shadow-lg group-hover/lf:block group-focus-within/lf:block"
+                >
+                  {t.dubbingEditor.inspector.liveFitNoBaseline}
+                </span>
+              </span>
+            )}
+            {isDirty ? (
+              <button
+                type="button"
+                onClick={() => {
+                  onSaveText(unit.unit_id, editingText)
+                  setIsDirty(false)
+                }}
+                className="rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-blue-600 transition-colors hover:bg-blue-50 hover:text-blue-700"
+              >
+                {t.dubbingEditor.inspector.saveText}
+              </button>
+            ) : null}
+          </div>
         }
       >
         <textarea
+          ref={dubTextareaRef}
           value={editingText}
           onChange={e => {
             setEditingText(e.target.value)
             setIsDirty(e.target.value !== unit.target_text)
           }}
-          rows={3}
-          className="min-h-[74px] w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm leading-5 text-slate-800 shadow-[inset_0_1px_0_rgba(15,23,42,.03)] transition-colors focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+          rows={1}
+          className="min-h-[40px] w-full resize-none overflow-hidden rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm leading-5 text-slate-800 shadow-[inset_0_1px_0_rgba(15,23,42,.03)] transition-colors focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
         />
         <LiveFitPredictor
           draftText={editingText}
@@ -2734,6 +2885,125 @@ function SegmentInspector({
         </div>
       </InspectorSection>
 
+      {/*
+       * Synthesis lane — sits FLUSH against the clip-preview card above
+       * so the "listen ↑ ↓ adjust speed → resynthesize" feedback loop is
+       * visually contiguous. We deliberately do NOT wrap it in another
+       * InspectorSection because it shares its parent surface with the
+       * preview card; instead we use a thin top divider + a tiny lane
+       * label ("合成 / Synthesize") to mark the boundary without making
+       * it feel like a separate page section.
+       *
+       * Why we're not merging player + synth into a single card:
+       *   - the playback-rate chip and the TTS speed selector use
+       *     different scales; collapsing them would re-introduce the
+       *     ambiguity we just spent time eliminating;
+       *   - the player is a *transport* (no side effects), the synth
+       *     card is a *producer* (writes audio); keeping them as two
+       *     adjacent-but-distinct cards preserves that semantic split.
+       */}
+      <div data-testid="synth-lane" className="border-b border-slate-100 bg-white px-3 pb-3 pt-1">
+        <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-slate-400">
+          <Wand2 size={11} />
+          {locale === 'zh-CN' ? '合成' : 'Synthesize'}
+          <span className="ml-1 text-[9px] font-normal normal-case tracking-normal text-slate-400">
+            {locale === 'zh-CN' ? '· 调整后重新生成此片段的配音' : '· Re-render this clip after adjusting'}
+          </span>
+        </div>
+        <div
+          data-testid="resynth-card"
+          className="rounded-lg border border-slate-200 bg-gradient-to-b from-slate-50/80 to-white p-2.5 shadow-sm"
+        >
+          <div className="mb-1.5 flex items-center justify-between gap-2">
+            <div className="group/synth relative flex items-center gap-1">
+              <RotateCcw size={11} className="shrink-0 text-slate-500" strokeWidth={2.25} aria-hidden="true" />
+              <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-600">
+                {t.dubbingEditor.inspector.synthSpeedLabel}
+              </span>
+              <span
+                role="img"
+                aria-label={t.dubbingEditor.inspector.synthSpeedTooltip}
+                tabIndex={0}
+                className="ml-0.5 flex h-3.5 w-3.5 cursor-help items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 focus:outline-none focus-visible:ring-1 focus-visible:ring-slate-400"
+              >
+                <Info size={10} aria-hidden="true" />
+              </span>
+              <div
+                role="tooltip"
+                className="pointer-events-none absolute left-0 top-full z-20 mt-1 hidden w-56 rounded-md bg-slate-900 px-2 py-1.5 text-[10px] leading-snug text-slate-100 shadow-lg group-hover/synth:block group-focus-within/synth:block"
+              >
+                {t.dubbingEditor.inspector.synthSpeedTooltip}
+              </div>
+            </div>
+            <div
+              data-testid="resynth-speed-control"
+              role="radiogroup"
+              aria-label={t.dubbingEditor.inspector.synthSpeedLabel}
+              className="flex items-center gap-0.5 rounded-md bg-white px-1 py-0.5 ring-1 ring-inset ring-slate-200"
+            >
+              {SYNTH_SPEED_LEVELS.map(level => {
+                const active = synthSpeed === level
+                return (
+                  <button
+                    key={level}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    data-testid={`resynth-speed-${level}`}
+                    onClick={() => setSynthSpeed(level)}
+                    className={`h-5 rounded px-1.5 font-mono text-[10px] tabular-nums transition-colors ${
+                      active
+                        ? 'bg-slate-900 text-white shadow-sm'
+                        : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'
+                    }`}
+                    title={`${level.toFixed(2)}×`}
+                  >
+                    {level === 1 ? '1×' : `${level}×`}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+          {synthSpeed !== 1 && (
+            <p className="mb-1.5 text-[10px] leading-tight text-slate-500">
+              {synthSpeed > 1
+                ? t.dubbingEditor.inspector.synthSpeedFasterHint
+                : t.dubbingEditor.inspector.synthSpeedSlowerHint}
+            </p>
+          )}
+          <button
+            type="button"
+            data-testid="resynthesize-btn"
+            onClick={handleResynthClick}
+            disabled={isSynthesizing}
+            className="inline-flex h-8 w-full items-center justify-center gap-1 rounded-md bg-slate-900 px-2 text-xs font-medium text-white shadow-sm ring-1 ring-inset ring-slate-900/5 transition-all hover:bg-slate-800 active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-slate-400"
+          >
+            {isSynthesizing ? (
+              <Loader2 size={12} className="shrink-0 animate-spin" />
+            ) : (
+              <RotateCcw size={12} className="shrink-0" strokeWidth={2.5} />
+            )}
+            <span className="truncate">
+              {t.dubbingEditor.inspector.resynthesize}
+              {synthSpeed !== 1 ? ` · ${synthSpeed}×` : ''}
+            </span>
+          </button>
+        </div>
+        {synthError && (
+          <div
+            data-testid="resynth-error-banner"
+            role="alert"
+            className="mt-1.5 flex items-start gap-1.5 rounded-md bg-rose-50 px-2 py-1.5 text-[11px] leading-tight text-rose-700 ring-1 ring-inset ring-rose-200"
+          >
+            <AlertTriangle size={11} className="mt-0.5 shrink-0" strokeWidth={2.25} />
+            <div className="flex-1">
+              <div className="font-medium">{t.dubbingEditor.inspector.resynthFailed}</div>
+              <div className="mt-0.5 break-words text-[10px] text-rose-600">{synthError}</div>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Phase 2: Per-unit quality score breakdown */}
       {(qualitySegment || clip.duration) && (() => {
         const summaryNode = (
@@ -2822,78 +3092,6 @@ function SegmentInspector({
             <kbd className="ml-0.5 hidden h-3.5 min-w-3.5 items-center justify-center rounded border border-amber-200 bg-white px-1 font-mono text-[9px] font-medium text-amber-600 group-disabled:border-slate-200 group-disabled:text-slate-400 sm:inline-flex">F</kbd>
           </button>
         </div>
-
-        {/* P1: Re-synthesis button — primary repair action */}
-        <div
-          data-testid="resynth-speed-control"
-          role="radiogroup"
-          aria-label={t.dubbingEditor.inspector.synthSpeedLabel}
-          className="mt-2 flex items-center justify-between gap-2 rounded-md bg-slate-50 px-2 py-1.5"
-        >
-          <span className="text-[10px] font-medium uppercase tracking-widest text-slate-500">
-            {t.dubbingEditor.inspector.synthSpeedLabel}
-          </span>
-          <div className="flex items-center gap-0.5">
-            {[0.85, 0.95, 1, 1.1, 1.2].map(level => {
-              const active = synthSpeed === level
-              return (
-                <button
-                  key={level}
-                  type="button"
-                  role="radio"
-                  aria-checked={active}
-                  data-testid={`resynth-speed-${level}`}
-                  onClick={() => setSynthSpeed(level)}
-                  className={`h-5 rounded px-1.5 font-mono text-[10px] tabular-nums transition-colors ${
-                    active
-                      ? 'bg-slate-900 text-white shadow-sm'
-                      : 'text-slate-500 hover:bg-white hover:text-slate-700'
-                  }`}
-                  title={`${level.toFixed(2)}×`}
-                >
-                  {level === 1 ? '1×' : `${level}×`}
-                </button>
-              )
-            })}
-          </div>
-        </div>
-        {synthSpeed !== 1 && (
-          <p className="mt-1 text-[10px] leading-tight text-slate-500">
-            {synthSpeed > 1
-              ? t.dubbingEditor.inspector.synthSpeedFasterHint
-              : t.dubbingEditor.inspector.synthSpeedSlowerHint}
-          </p>
-        )}
-        <button
-          type="button"
-          data-testid="resynthesize-btn"
-          onClick={handleResynthClick}
-          disabled={isSynthesizing}
-          className="mt-1.5 inline-flex h-8 w-full items-center justify-center gap-1 rounded-md bg-slate-900 px-2 text-xs font-medium text-white shadow-sm ring-1 ring-inset ring-slate-900/5 transition-all hover:bg-slate-800 active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-slate-400"
-        >
-          {isSynthesizing ? (
-            <Loader2 size={12} className="shrink-0 animate-spin" />
-          ) : (
-            <RotateCcw size={12} className="shrink-0" strokeWidth={2.5} />
-          )}
-          <span className="truncate">
-            {t.dubbingEditor.inspector.resynthesize}
-            {synthSpeed !== 1 ? ` · ${synthSpeed}×` : ''}
-          </span>
-        </button>
-        {synthError && (
-          <div
-            data-testid="resynth-error-banner"
-            role="alert"
-            className="mt-1.5 flex items-start gap-1.5 rounded-md bg-rose-50 px-2 py-1.5 text-[11px] leading-tight text-rose-700 ring-1 ring-inset ring-rose-200"
-          >
-            <AlertTriangle size={11} className="mt-0.5 shrink-0" strokeWidth={2.25} />
-            <div className="flex-1">
-              <div className="font-medium">{t.dubbingEditor.inspector.resynthFailed}</div>
-              <div className="mt-0.5 break-words text-[10px] text-rose-600">{synthError}</div>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Phase 2: Back-translation check */}

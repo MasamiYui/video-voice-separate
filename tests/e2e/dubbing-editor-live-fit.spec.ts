@@ -259,10 +259,20 @@ test.describe('Dubbing editor — live fit predictor', () => {
     await setupRoutes(page)
     await openInspectorOn(page, 'issue-seg-0099')
 
+    // No-baseline branch: the predictor surface stays mounted (so the
+    // "unknown" tone is asserted), but it renders no visible row beneath
+    // the textarea. Instead, an inline info icon is shown next to the
+    // "dub text" section title; hovering it surfaces the explanation as
+    // a tooltip. This avoids an orphan row beneath the textarea.
     const predictor = page.locator('[data-testid="live-fit-predictor"]')
-    await expect(predictor).toBeVisible()
     await expect(predictor).toHaveAttribute('data-tone', 'unknown')
-    // The chip is not rendered in the unknown branch, only the hint.
+    await expect(predictor).toBeHidden()
+    // The chip is not rendered in the unknown branch.
     await expect(page.locator('[data-testid="live-fit-predictor-chip"]')).toHaveCount(0)
+
+    // The inline info trigger is visible and exposes the explanation as
+    // its accessible name (so it is reachable by AT and shown on hover).
+    const infoTrigger = page.locator('[role="img"][aria-label*="实时预估"]')
+    await expect(infoTrigger).toBeVisible()
   })
 })
